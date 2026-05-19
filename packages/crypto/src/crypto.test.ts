@@ -9,6 +9,8 @@ import {
   openDocKeyForEd25519,
   createSignedUpdate,
   verifyAndDecryptSignedUpdate,
+  createAuthProof,
+  verifyAuthProof,
   ReplayCache,
 } from "./index.js";
 
@@ -72,6 +74,41 @@ describe("@dpe/crypto", () => {
       expectedKeyVersion: 1,
     });
     expect(decrypted).toEqual(plaintext);
+  });
+
+  it("auth proof binds jwt to challenge", async () => {
+    const node = await generateNodeKeyPair();
+    const jwt = "test.jwt.token";
+    const challenge = "conn-42";
+    const proof = createAuthProof(node.privateKey, jwt, challenge);
+    expect(
+      await verifyAuthProof(node.publicKey, jwt, challenge, proof),
+    ).toBe(true);
+    expect(
+      await verifyAuthProof(node.publicKey, jwt, "wrong", proof),
+    ).toBe(false);
+  });
+
+  it("rejects wrong key_version on decrypt", async () => {
+    const signer = await generateNodeKeyPair();
+    const docKey = generateDocKey();
+    const update = await createSignedUpdate({
+      docId: "doc-1",
+      keyVersion: 1,
+      docKey,
+      plaintext: new Uint8Array([1, 2, 3]),
+      signerPrivateKey: signer.privateKey,
+      signerNodeId: signer.nodeId,
+      seq: 1,
+    });
+    await expect(
+      verifyAndDecryptSignedUpdate({
+        update,
+        docKey,
+        signerPublicKey: signer.publicKey,
+        expectedKeyVersion: 2,
+      }),
+    ).rejects.toThrow(/key_version/);
   });
 
   it("replay cache rejects duplicate seq", () => {

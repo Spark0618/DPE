@@ -18,11 +18,12 @@
     "test": "vitest run",
     "lint": "tsc --noEmit"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@dpe/shared": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
-    "@dpe/shared": "workspace:*"
+    "vitest": "^2.1.8"
   }
 }

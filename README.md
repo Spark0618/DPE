@@ -21,8 +21,15 @@ pnpm dev
 ## Docs
 
 - [Design (中文)](./docs/design.md) — also [方案.md](./方案.md)
+- [P1 Cryptography](./docs/P1.md)
 - [Architecture](./docs/architecture.md)
 - [Platform setup](./docs/platform-setup.md)
+
+## P1 verification
+
+```bash
+pnpm verify:p1
+```
 
 ## License
 

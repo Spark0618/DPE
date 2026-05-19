@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { authEnvelopeSchema, signedUpdateSchema, jwtPayloadSchema } from "./index.js";
+import {
+  authEnvelopeSchema,
+  signedUpdateSchema,
+  jwtPayloadSchema,
+  keyRotationSchema,
+  operableRpcSchema,
+} from "./index.js";
 
 describe("@dpe/proto schemas", () => {
   it("parses auth envelope", () => {
@@ -38,5 +44,20 @@ describe("@dpe/proto schemas", () => {
       sig: "c2ln",
     });
     expect(v.seq).toBe(1);
+  });
+
+  it("parses key rotation and operable rpc", () => {
+    keyRotationSchema.parse({
+      type: "key_rotation",
+      doc_id: "d1",
+      key_version: 2,
+      doc_keys: { nodeA: "sealedA" },
+    });
+    operableRpcSchema.parse({
+      op: "SetACL",
+      user_node_id: "u1",
+      doc_id: "d1",
+      role: 2,
+    });
   });
 });

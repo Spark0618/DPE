@@ -12,7 +12,8 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "clean": "node scripts/clean.mjs",
-    "test:p1": "pnpm --filter @dpe/proto test && pnpm --filter @dpe/crypto test"
+    "test:p1": "pnpm --filter @dpe/proto test && pnpm --filter @dpe/crypto test && pnpm --filter @dpe/acl test",
+    "verify:p1": "node scripts/verify-p1.mjs"
   },
   "devDependencies": {
     "cross-env": "^7.0.3",
