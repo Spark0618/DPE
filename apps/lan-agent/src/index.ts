@@ -7,6 +7,20 @@ async function main() {
   const peers = new Map<string, { uid: string; host: string; port: number; lastSeen: number }>();
   const app = Fastify();
   await app.register(websocket);
+
+  app.get("/", async () => ({
+    service: "lan-agent",
+    status: "ok",
+    endpoints: {
+      health: "/health",
+      network: "/network",
+      discovery: "/discovery",
+      peers: "/peers?uid=<prefix>",
+      websocket: "/ws",
+    },
+    hint: "Open /health or /network — there is no HTML UI on this port.",
+  }));
+
   app.get("/health", async () => ({ status: "ok", service: "lan-agent" }));
   app.get("/network", async () => ({
     hostname: os.hostname(),
