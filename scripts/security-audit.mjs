@@ -95,4 +95,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log("OK: security audit (" + (12) + " checks)");
+console.log("OK: security audit (13 checks)");
