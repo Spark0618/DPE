@@ -49,12 +49,42 @@ export class GroupP2pMesh {
   }
 
   async start(): Promise<void> {
-    this.ws = new WebSocket(SIGNALING);
+    const url = SIGNALING;
+    this.ws = new WebSocket(url);
     await new Promise<void>((resolve, reject) => {
       const ws = this.ws!;
-      ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("signaling connect failed"));
+      let settled = false;
+      const fail = (message: string) => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(message));
+      };
+      const ok = () => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
+
+      const timeout = window.setTimeout(() => {
+        fail(`信令连接超时，请确认 signaling 已启动 (${url})`);
+      }, 10_000);
+
+      ws.onopen = () => {
+        window.clearTimeout(timeout);
+        ws.onclose = null;
+        ws.onerror = null;
+        ok();
+      };
+      ws.onerror = () => {
+        window.clearTimeout(timeout);
+        fail(`无法连接信令服务，请运行 pnpm dev 或检查 ${url}`);
+      };
+      ws.onclose = () => {
+        window.clearTimeout(timeout);
+        fail(`信令连接已关闭 (${url})`);
+      };
     });
+
     this.ws.onmessage = (ev) => void this.onSignalMessage(String(ev.data));
     this.ws.send(
       JSON.stringify({

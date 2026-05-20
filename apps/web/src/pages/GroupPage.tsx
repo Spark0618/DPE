@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api, loadGroupAdminKey, type DocNodeRow } from "../lib/api";
 import { loadIdentity } from "../lib/identity";
@@ -15,46 +15,68 @@ export default function GroupPage() {
   const [aclRole, setAclRole] = useState(2);
   const [p2pStatus, setP2pStatus] = useState("未连接");
   const [error, setError] = useState<string | null>(null);
+  const [meshGen, setMeshGen] = useState(0);
+
+  const connectMesh = useCallback(
+    async (signal: AbortSignal) => {
+      const pkAdmin = loadGroupAdminKey(gid);
+      if (!pkAdmin) {
+        setP2pStatus("未连接");
+        setError("未保存 pk_admin，请从建群/入群流程进入");
+        return;
+      }
+      if (!identity) return;
+
+      setP2pStatus("连接中…");
+      setError(null);
+
+      const [tree, mem] = await Promise.all([
+        api.getTree(gid, identity.nodeId),
+        api.listMembers(gid),
+      ]);
+      if (signal.aborted) return;
+
+      setNodes(tree.nodes);
+      setMembers(mem.members);
+
+      const memberMap = new Map(mem.members.map((m) => [m.node_id, m.public_key]));
+      await startGroupMesh({
+        groupId: gid,
+        nodeId: identity.nodeId,
+        adminPublicKeyBase64Url: pkAdmin,
+        memberPublicKeys: memberMap,
+        getJwt: async () => {
+          const r = await api.refreshJwt(gid, identity.nodeId, "root");
+          return r.jwt;
+        },
+      });
+      if (signal.aborted) return;
+
+      setP2pStatus("信令已连接");
+      setError(null);
+    },
+    [gid, identity],
+  );
 
   useEffect(() => {
     if (!identity || !gid) return;
-    const pkAdmin = loadGroupAdminKey(gid);
-    if (!pkAdmin) {
-      setError("未保存 pk_admin，请从建群/入群流程进入");
-    }
 
-    void (async () => {
-      try {
-        const [tree, mem] = await Promise.all([
-          api.getTree(gid, identity.nodeId),
-          api.listMembers(gid),
-        ]);
-        setNodes(tree.nodes);
-        setMembers(mem.members);
-
-        const memberMap = new Map(mem.members.map((m) => [m.node_id, m.public_key]));
-        if (pkAdmin) {
-          await startGroupMesh({
-            groupId: gid,
-            nodeId: identity.nodeId,
-            adminPublicKeyBase64Url: pkAdmin,
-            memberPublicKeys: memberMap,
-            getJwt: async () => {
-              const r = await api.refreshJwt(gid, identity.nodeId, "root");
-              return r.jwt;
-            },
-          });
-          setP2pStatus("信令已连接");
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "加载失败");
-      }
-    })();
+    const ac = new AbortController();
+    void connectMesh(ac.signal).catch((e) => {
+      if (ac.signal.aborted) return;
+      setError(e instanceof Error ? e.message : "P2P 连接失败");
+      setP2pStatus("信令未连接");
+    });
 
     return () => {
+      ac.abort();
       void stopGroupMesh();
     };
-  }, [identity, gid]);
+  }, [identity, gid, meshGen, connectMesh]);
+
+  function retryP2p() {
+    setMeshGen((n) => n + 1);
+  }
 
   async function setAcl() {
     if (!identity || !aclUid.trim()) return;
@@ -91,6 +113,14 @@ export default function GroupPage() {
       <h1>群组</h1>
       <p>
         <code>{gid}</code> · P2P: {p2pStatus}
+        {p2pStatus === "信令未连接" && (
+          <>
+            {" "}
+            <button type="button" onClick={retryP2p}>
+              重试信令
+            </button>
+          </>
+        )}
       </p>
       {error && <p style={{ color: "#f88" }}>{error}</p>}
 
@@ -147,3 +177,4 @@ export default function GroupPage() {
     </main>
   );
 }
+
