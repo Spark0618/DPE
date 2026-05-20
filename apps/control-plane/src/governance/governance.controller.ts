@@ -1,9 +1,9 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
+import { Body, Controller, Inject, Param, Post } from "@nestjs/common";
 import { GovernanceService } from "./governance.service.js";
 
 @Controller("groups/:id/governance")
 export class GovernanceController {
-  constructor(private readonly governance: GovernanceService) {}
+  constructor(@Inject(GovernanceService) private readonly governance: GovernanceService) {}
 
   @Post("enable-proxy")
   enableProxy(

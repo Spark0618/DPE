@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Inject,
   Param,
   Post,
   Query,
@@ -11,7 +12,7 @@ import type { CreateGroupDto, CreateInvitationDto, JoinGroupDto, RefreshJwtDto }
 
 @Controller()
 export class GroupsController {
-  constructor(private readonly groups: GroupsService) {}
+  constructor(@Inject(GroupsService) private readonly groups: GroupsService) {}
 
   @Post("groups")
   createGroup(@Body() body: CreateGroupDto) {

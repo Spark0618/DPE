@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { base64UrlToBytes, utf8ToBytes, verify } from "@dpe/crypto";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { SigningService } from "../crypto/signing.service.js";
@@ -6,8 +6,8 @@ import { SigningService } from "../crypto/signing.service.js";
 @Injectable()
 export class GovernanceService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly signing: SigningService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(SigningService) private readonly signing: SigningService,
   ) {}
 
   async enableProxy(

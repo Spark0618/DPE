@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -16,12 +17,12 @@ const ROOT_DOC_ID = "root";
 @Injectable()
 export class GroupsService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly signing: SigningService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(SigningService) private readonly signing: SigningService,
   ) {}
 
   async createGroup(dto: CreateGroupDto) {
-    const controlMode = dto.controlMode ?? "proxy";
+    const controlMode = dto.control_mode ?? "proxy";
     const issuerPublicKey = this.signing.getIssuerPublicKeyBase64Url();
     const proxyNodeId = controlMode === "proxy" ? this.signing.nodeId : null;
     const proxyPublicKey = controlMode === "proxy" ? issuerPublicKey : null;
@@ -31,24 +32,24 @@ export class GroupsService {
       const g = await tx.group.create({
         data: {
           name: dto.name,
-          ownerNodeId: dto.ownerNodeId,
-          ownerPublicKey: dto.ownerPublicKey,
+          ownerNodeId: dto.owner_node_id,
+          ownerPublicKey: dto.owner_public_key,
           controlMode,
           proxyNodeId,
           proxyPublicKey,
-          proxyBaseUrl: dto.proxyBaseUrl ?? process.env.DPE_PROXY_BASE_URL ?? null,
-          issuerNodeId: controlMode === "proxy" ? this.signing.nodeId : dto.ownerNodeId,
+          proxyBaseUrl: dto.proxy_base_url ?? process.env.DPE_PROXY_BASE_URL ?? null,
+          issuerNodeId: controlMode === "proxy" ? this.signing.nodeId : dto.owner_node_id,
           issuerPublicKey,
           members: {
             create: {
-              nodeId: dto.ownerNodeId,
-              publicKey: dto.ownerPublicKey,
+              nodeId: dto.owner_node_id,
+              publicKey: dto.owner_public_key,
             },
           },
           aclGrants: {
             create: {
               docId: ROOT_DOC_ID,
-              nodeId: dto.ownerNodeId,
+              nodeId: dto.owner_node_id,
               role: 3,
             },
           },
@@ -87,9 +88,9 @@ export class GroupsService {
   async joinGroup(groupId: string, dto: JoinGroupDto) {
     const group = await this.requireGroup(groupId);
     await this.prisma.member.upsert({
-      where: { groupId_nodeId: { groupId, nodeId: dto.nodeId } },
-      create: { groupId, nodeId: dto.nodeId, publicKey: dto.publicKey },
-      update: { publicKey: dto.publicKey, leftAt: null },
+      where: { groupId_nodeId: { groupId, nodeId: dto.node_id } },
+      create: { groupId, nodeId: dto.node_id, publicKey: dto.public_key },
+      update: { publicKey: dto.public_key, leftAt: null },
     });
     return {
       group_id: group.id,
@@ -121,7 +122,7 @@ export class GroupsService {
       data: {
         groupId,
         inviterNodeId,
-        inviteeNodeId: dto.inviteeNodeId,
+        inviteeNodeId: dto.invitee_node_id,
         expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
       },
     });
@@ -139,7 +140,7 @@ export class GroupsService {
   async acceptInvitation(invitationId: string, dto: JoinGroupDto) {
     const inv = await this.prisma.invitation.findUnique({ where: { id: invitationId } });
     if (!inv || inv.status !== "pending") throw new NotFoundException("invitation not found");
-    if (inv.inviteeNodeId !== dto.nodeId) throw new ForbiddenException("not invitee");
+    if (inv.inviteeNodeId !== dto.node_id) throw new ForbiddenException("not invitee");
 
     await this.joinGroup(inv.groupId, dto);
     await this.prisma.aclGrant.upsert({
@@ -147,13 +148,13 @@ export class GroupsService {
         groupId_docId_nodeId: {
           groupId: inv.groupId,
           docId: ROOT_DOC_ID,
-          nodeId: dto.nodeId,
+          nodeId: dto.node_id,
         },
       },
       create: {
         groupId: inv.groupId,
         docId: ROOT_DOC_ID,
-        nodeId: dto.nodeId,
+        nodeId: dto.node_id,
         role: 1,
       },
       update: {},
@@ -179,14 +180,14 @@ export class GroupsService {
 
   async refreshJwt(groupId: string, dto: RefreshJwtDto) {
     const group = await this.requireGroup(groupId);
-    const member = await this.requireMember(groupId, dto.nodeId);
+    const member = await this.requireMember(groupId, dto.node_id);
 
     const grant = await this.prisma.aclGrant.findUnique({
       where: {
         groupId_docId_nodeId: {
           groupId,
-          docId: dto.docId,
-          nodeId: dto.nodeId,
+          docId: dto.doc_id,
+          nodeId: dto.node_id,
         },
       },
     });
@@ -195,15 +196,15 @@ export class GroupsService {
     }
 
     const doc = await this.prisma.docNode.findUnique({
-      where: { docId: dto.docId },
+      where: { groupId_docId: { groupId, docId: dto.doc_id } },
     });
-    if (!doc || doc.groupId !== groupId) throw new NotFoundException("doc not found");
+    if (!doc) throw new NotFoundException("doc not found");
 
     const keyRow = await this.prisma.documentKey.findUnique({
       where: {
         groupId_docId_keyVersion: {
           groupId,
-          docId: dto.docId,
+          docId: dto.doc_id,
           keyVersion: doc.keyVersion,
         },
       },
@@ -214,9 +215,9 @@ export class GroupsService {
 
     const token = await this.signing.issueJwt({
       iss: this.signing.resolveIssuer(group),
-      sub: dto.nodeId,
+      sub: dto.node_id,
       aud: groupId,
-      doc_id: dto.docId,
+      doc_id: dto.doc_id,
       role: grant.role,
       doc_key: docKeyEnc,
       key_version: doc.keyVersion,
@@ -227,14 +228,16 @@ export class GroupsService {
 
   async rotateDocKey(groupId: string, callerNodeId: string, docId: string) {
     await this.requireOperable(groupId, callerNodeId, docId);
-    const doc = await this.prisma.docNode.findUnique({ where: { docId } });
-    if (!doc || doc.groupId !== groupId) throw new NotFoundException("doc not found");
+    const doc = await this.prisma.docNode.findUnique({
+      where: { groupId_docId: { groupId, docId } },
+    });
+    if (!doc) throw new NotFoundException("doc not found");
 
     const newVersion = doc.keyVersion + 1;
     const newKey = generateDocKey();
     await this.prisma.$transaction(async (tx) => {
       await tx.docNode.update({
-        where: { docId },
+        where: { groupId_docId: { groupId, docId } },
         data: { keyVersion: newVersion },
       });
       await tx.documentKey.create({
@@ -275,8 +278,10 @@ export class GroupsService {
 
     if (rpc.op === "SetACL") {
       await this.requireOperable(groupId, callerNodeId, rpc.doc_id);
-      const parent = await this.prisma.docNode.findUnique({ where: { docId: rpc.doc_id } });
-      if (!parent || parent.groupId !== groupId) throw new NotFoundException("doc not found");
+      const parent = await this.prisma.docNode.findUnique({
+        where: { groupId_docId: { groupId, docId: rpc.doc_id } },
+      });
+      if (!parent) throw new NotFoundException("doc not found");
       if (parent.parentDocId) {
         const existing = await this.prisma.aclGrant.findMany({
           where: { groupId, nodeId: rpc.user_node_id },
@@ -350,7 +355,9 @@ export class GroupsService {
 
     if (rpc.op === "DeleteDoc") {
       await this.requireOperable(groupId, callerNodeId, rpc.doc_id);
-      await this.prisma.docNode.delete({ where: { docId: rpc.doc_id } });
+      await this.prisma.docNode.delete({
+        where: { groupId_docId: { groupId, docId: rpc.doc_id } },
+      });
       await this.prisma.aclGrant.deleteMany({ where: { groupId, docId: rpc.doc_id } });
       return { ok: true };
     }

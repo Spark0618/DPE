@@ -9,10 +9,11 @@
     "start": "node dist/main.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev"
+    "db:push": "node scripts/run-prisma.mjs db push",
+    "db:migrate": "node scripts/run-prisma.mjs migrate dev"
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
     "@prisma/client": "^6.1.0",
     "@dpe/shared": "workspace:*",
     "@dpe/proto": "workspace:*",

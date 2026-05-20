@@ -5,10 +5,12 @@
  *   pnpm verify:p2 --api
  */
 import { spawn, spawnSync } from "node:child_process";
+import { config } from "dotenv";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+config({ path: path.join(root, ".env") });
 const cpDir = path.join(root, "apps", "control-plane");
 const DEFAULT_DB = "postgresql://dpe:dpe@localhost:5432/dpe";
 
@@ -40,7 +42,10 @@ async function waitHealth(baseUrl, attempts = 40) {
 }
 
 async function apiSmoke() {
-  const { generateNodeKeyPair, bytesToBase64Url } = await import("@dpe/crypto");
+  const cryptoEntry = path.join(root, "packages", "crypto", "dist", "index.js");
+  const { generateNodeKeyPair, bytesToBase64Url } = await import(
+    new URL(`file:///${cryptoEntry.replace(/\\/g, "/")}`).href,
+  );
 
   const owner = await generateNodeKeyPair();
   const base = "http://127.0.0.1:3099";
@@ -96,12 +101,7 @@ async function main() {
 
   const databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DB;
   process.env.DATABASE_URL = databaseUrl;
-  run(
-    "pnpm",
-    ["--filter", "@dpe/control-plane", "exec", "prisma", "db", "push", "--skip-generate"],
-    "prisma db push",
-    cpDir,
-  );
+  run("pnpm", ["--filter", "@dpe/control-plane", "db:push"], "prisma db push");
 
   const child = spawn("pnpm", ["exec", "tsx", "src/main.ts"], {
     cwd: cpDir,

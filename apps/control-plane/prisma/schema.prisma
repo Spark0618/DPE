@@ -58,8 +58,8 @@ model Invitation {
 }
 
 model DocNode {
-  docId       String   @id @map("doc_id")
   groupId     String   @map("group_id")
+  docId       String   @map("doc_id")
   parentDocId String?  @map("parent_doc_id")
   title       String   @default("Untitled")
   sortOrder   Int      @default(0) @map("sort_order")
@@ -69,6 +69,7 @@ model DocNode {
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   keys  DocumentKey[]
 
+  @@id([groupId, docId])
   @@index([groupId, parentDocId])
   @@map("doc_nodes")
 }
@@ -80,7 +81,7 @@ model DocumentKey {
   keyVersion Int    @map("key_version")
   keyBase64  String @map("key_base64")
 
-  doc DocNode @relation(fields: [docId], references: [docId], onDelete: Cascade)
+  doc DocNode @relation(fields: [groupId, docId], references: [groupId, docId], onDelete: Cascade)
 
   @@id([groupId, docId, keyVersion])
   @@map("document_keys")

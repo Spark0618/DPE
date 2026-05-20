@@ -17,6 +17,7 @@
     "verify:p2": "node scripts/verify-p2.mjs"
   },
   "devDependencies": {
+    "dotenv": "^16.4.7",
     "cross-env": "^7.0.3",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
