@@ -14,11 +14,14 @@
     "clean": "node scripts/clean.mjs",
     "test:p1": "pnpm --filter @dpe/proto test && pnpm --filter @dpe/crypto test && pnpm --filter @dpe/acl test",
     "verify:p1": "node scripts/verify-p1.mjs",
-    "verify:p2": "node scripts/verify-p2.mjs"
+    "verify:p2": "node scripts/verify-p2.mjs",
+    "verify:p3": "node scripts/verify-p3.mjs",
+    "test:p3": "pnpm --filter @dpe/p2p test"
   },
   "devDependencies": {
     "dotenv": "^16.4.7",
     "cross-env": "^7.0.3",
+    "ws": "^8.18.0",
     "prettier": "^3.4.2",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"

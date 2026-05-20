@@ -10,6 +10,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@dpe/p2p": "workspace:*",
     "fastify": "^5.2.0",
     "@fastify/websocket": "^11.0.1",
     "ws": "^8.18.0"

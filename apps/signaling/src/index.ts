@@ -1,17 +1,34 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
+import { SignalingRooms } from "./rooms.js";
 
 async function main() {
-  const port = Number(process.env.PORT ?? 3002);
-  const app = Fastify();
+  const port = Number(process.env.SIGNALING_PORT ?? process.env.PORT ?? 3002);
+  const app = Fastify({ logger: false });
   await app.register(websocket);
+
+  const rooms = new SignalingRooms();
+
   app.get("/health", async () => ({ status: "ok", service: "signaling" }));
+
+  app.get("/", async () => ({
+    service: "signaling",
+    status: "ok",
+    websocket: "/ws",
+    protocol: "join | leave | signal → peers | signal | error",
+  }));
+
   app.register(async (f) => {
     f.get("/ws", { websocket: true }, (socket) => {
-      socket.on("message", (raw) => socket.send(raw));
+      rooms.handleConnection(socket);
     });
   });
+
   await app.listen({ port, host: "0.0.0.0" });
   console.log(`signaling on ${port}`);
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
