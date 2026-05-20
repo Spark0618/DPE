@@ -9,12 +9,13 @@ export type GroupCardData = {
   is_owner: boolean;
 };
 
+/** Breeze-style soft surfaces (no heavy dark tiles). */
 const GRADIENTS = [
-  "linear-gradient(135deg, #1a1f3a 0%, #3d5a80 100%)",
-  "linear-gradient(135deg, #f8f9fa 0%, #e8eef4 100%)",
-  "linear-gradient(135deg, #4a5568 0%, #a0aec0 100%)",
-  "linear-gradient(135deg, #2d3748 0%, #718096 100%)",
-  "linear-gradient(135deg, #ebf4ff 0%, #c3dafe 100%)",
+  "linear-gradient(165deg, #e8f4fc 0%, #d4ebf8 100%)",
+  "linear-gradient(165deg, #f5f6f7 0%, #ebedef 100%)",
+  "linear-gradient(165deg, #eef6fa 0%, #dceef7 100%)",
+  "linear-gradient(165deg, #f0f2f4 0%, #e2e6ea 100%)",
+  "linear-gradient(165deg, #e3f2fd 0%, #cfe8f6 100%)",
 ];
 
 function pickGradient(id: string) {
@@ -32,8 +33,7 @@ export function GroupCard({
   to?: string;
 }) {
   const gradient = pickGradient(group.group_id);
-  const light = gradient.includes("#f8f9fa") || gradient.includes("#ebf4ff");
-  const textColor = light ? "#1f2328" : "#ffffff";
+  const textColor = "#232629";
 
   return (
     <Link to={to ?? `/groups/${group.group_id}`} className="group-card">

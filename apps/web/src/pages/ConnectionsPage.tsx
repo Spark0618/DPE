@@ -4,6 +4,7 @@ import { exportPublicKeyBase64Url, importPublicKeyBase64Url } from "@dpe/crypto"
 import { api, saveGroupAdminKey, type InvitationRow } from "../lib/api";
 import { fetchDiscovery, fetchNetwork, getLanAgentBaseUrl, searchPeers, type LanPeer } from "../lib/lan";
 import { loadIdentity } from "../lib/identity";
+import { peerDisplayLabel } from "../lib/display-names";
 
 export default function ConnectionsPage() {
   const identity = loadIdentity();
@@ -64,6 +65,7 @@ export default function ConnectionsPage() {
       const res = await api.acceptInvitation(inv.id, {
         node_id: identity.nodeId,
         public_key: exportPublicKeyBase64Url(pk),
+        display_name: identity.displayName,
       });
       saveGroupAdminKey(res.group_id, res.pk_admin);
       await refresh();
@@ -152,7 +154,7 @@ export default function ConnectionsPage() {
         <div className="app-search-row">
           <input
             className="app-input"
-            placeholder="按 UID 前缀搜索邻居…"
+            placeholder="按邻居名称或节点前缀搜索…"
             value={peerQuery}
             onChange={(e) => setPeerQuery(e.target.value)}
           />
@@ -164,8 +166,10 @@ export default function ConnectionsPage() {
           {peers.length === 0 && <li className="app-muted">暂无邻居</li>}
           {peers.map((p) => (
             <li key={`${p.uid}-${p.host}`}>
-              <span>{p.host}:{p.port}</span>
-              <span className="app-muted">{p.source}</span>
+              <strong>{peerDisplayLabel(p)}</strong>
+              <span className="app-muted">
+                {p.host}:{p.port} · {p.source}
+              </span>
             </li>
           ))}
         </ul>

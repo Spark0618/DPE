@@ -4,6 +4,7 @@ export interface CreateGroupDto {
   description?: string;
   owner_node_id: string;
   owner_public_key: string;
+  owner_display_name?: string;
   control_mode?: "owner_direct" | "proxy";
   proxy_base_url?: string;
 }
@@ -11,6 +12,12 @@ export interface CreateGroupDto {
 export interface JoinGroupDto {
   node_id: string;
   public_key: string;
+  display_name?: string;
+}
+
+export interface UpdateDisplayNameDto {
+  node_id: string;
+  display_name: string;
 }
 
 export interface CreateInvitationDto {
@@ -20,6 +27,11 @@ export interface CreateInvitationDto {
 export interface RefreshJwtDto {
   node_id: string;
   doc_id: string;
+}
+
+export interface PutDocSnapshotDto {
+  node_id: string;
+  state_update_base64: string;
 }
 
 export interface UpdateGovernanceDto {

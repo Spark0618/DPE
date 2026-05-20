@@ -1,19 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { createAndStoreIdentity, loadIdentity } from "../lib/identity";
+import {
+  createAndStoreIdentity,
+  loadDisplayName,
+  loadIdentityKeys,
+  saveDisplayName,
+} from "../lib/identity";
+import { api } from "../lib/api";
+import { shortNodeId } from "../lib/display-names";
 
 export default function OnboardingPage() {
   const nav = useNavigate();
-  const [identity, setIdentity] = useState(loadIdentity);
+  const [keys, setKeys] = useState(loadIdentityKeys);
+  const [displayName, setDisplayName] = useState(loadDisplayName() ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (keys && loadDisplayName()) {
+      nav("/dashboard", { replace: true });
+    }
+  }, [keys, nav]);
 
   async function createIdentity() {
     setBusy(true);
     setError(null);
     try {
       const id = await createAndStoreIdentity();
-      setIdentity(id);
+      setKeys(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : "生成失败");
     } finally {
@@ -21,32 +35,68 @@ export default function OnboardingPage() {
     }
   }
 
+  async function finishProfile() {
+    if (!keys) return;
+    setBusy(true);
+    setError(null);
+    try {
+      saveDisplayName(displayName);
+      await api.syncDisplayName(keys.nodeId, displayName.trim());
+      nav("/dashboard");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const needsKeys = !keys;
+  const needsName = keys && !loadDisplayName();
+
   return (
-    <main style={{ padding: "2rem", maxWidth: 560 }}>
+    <main className="app-page app-page--narrow">
       <h1>Distributed Privacy Editor</h1>
-      <p>首次登录：生成 Ed25519 密钥对，UID = SHA-256(公钥) 十六进制</p>
-      <div className="card">
-        {identity ? (
-          <>
-            <p>
-              UID: <code>{identity.nodeId}</code>
-            </p>
-            <p style={{ fontSize: 12, opacity: 0.8 }}>
-              公钥: <code>{identity.publicKeyBase64Url.slice(0, 24)}…</code>
-            </p>
-          </>
-        ) : (
-          <button onClick={createIdentity} disabled={busy}>
-            {busy ? "生成中…" : "生成身份"}
-          </button>
-        )}
-        {error && <p style={{ color: "#f88" }}>{error}</p>}
-      </div>
-      {identity && (
-        <button type="button" onClick={() => nav("/dashboard")}>
-          进入总面板
-        </button>
-      )}
+      {needsKeys ? (
+        <>
+          <p className="app-muted">首次使用须生成本机密钥（节点 ID 仅用于底层协议，日常以用户名为准）。</p>
+          <section className="app-panel">
+            <button type="button" className="app-btn app-btn--primary" disabled={busy} onClick={() => void createIdentity()}>
+              {busy ? "生成中…" : "生成本机身份"}
+            </button>
+          </section>
+        </>
+      ) : needsName ? (
+        <>
+          <p className="app-muted">
+            请设置<strong>用户名</strong>（群组内展示）。节点 ID{" "}
+            <code title={keys.nodeId}>{shortNodeId(keys.nodeId, 12)}</code> 仅作技术标识。
+          </p>
+          <section className="app-panel">
+            <label className="app-label" htmlFor="display-name">
+              用户名
+            </label>
+            <input
+              id="display-name"
+              className="app-input"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="例如：陈同学"
+              maxLength={32}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="app-btn app-btn--primary"
+              style={{ marginTop: 12 }}
+              disabled={busy || !displayName.trim()}
+              onClick={() => void finishProfile()}
+            >
+              {busy ? "保存中…" : "进入总览"}
+            </button>
+          </section>
+        </>
+      ) : null}
+      {error && <p className="app-error">{error}</p>}
     </main>
   );
 }

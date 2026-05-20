@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { isFolderDoc } from "@dpe/shared";
 import { DocTreeNav, ROOT_DOC_ID } from "../components/DocTreeNav";
@@ -16,6 +16,8 @@ export default function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const identity = loadIdentity();
+  const nodeId = identity?.nodeId ?? "";
+  const myName = identity?.displayName ?? "";
   const gid = groupId ?? "";
 
   const [nodes, setNodes] = useState<DocNodeRow[]>([]);
@@ -25,11 +27,17 @@ export default function GroupPage() {
   const [error, setError] = useState<string | null>(null);
   const [meshGen, setMeshGen] = useState(0);
   const [newItemTitle, setNewItemTitle] = useState("");
+  const [renameTitle, setRenameTitle] = useState("");
   const [selectedId, setSelectedId] = useState(ROOT_DOC_ID);
+  const meshBusyRef = useRef(false);
 
   const selectedNode = nodes.find((n) => n.docId === selectedId);
   const parentIsFolder = selectedNode ? isFolder(selectedNode) : true;
   const selectedIsFolder = selectedNode ? isFolder(selectedNode) : true;
+
+  useEffect(() => {
+    setRenameTitle(selectedNode?.title ?? "");
+  }, [selectedId, selectedNode?.title]);
 
   useEffect(() => {
     const doc = searchParams.get("doc");
@@ -44,67 +52,89 @@ export default function GroupPage() {
     [setSearchParams],
   );
 
-  const connectMesh = useCallback(
-    async (signal: AbortSignal) => {
-      const pkAdmin = loadGroupAdminKey(gid);
-      if (!pkAdmin) {
-        setP2pStatus("未连接");
-        setError("未配置 pk_admin，请从建群/入群流程接入");
-        return;
+  useEffect(() => {
+    if (!nodeId || !gid) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const myGroups = await api.listAllGroups(nodeId);
+        if (cancelled) return;
+        const card = myGroups.find((g) => g.group_id === gid);
+        setIsOwner(card?.is_owner ?? false);
+        if (card) setGroupName(card.name);
+        const tree = await api.getTree(gid, nodeId);
+        if (cancelled) return;
+        setNodes(tree.nodes);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : "加载群组失败");
+        }
       }
-      if (!identity) return;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gid, nodeId]);
 
+  useEffect(() => {
+    if (!nodeId || !gid) return;
+
+    const pkAdmin = loadGroupAdminKey(gid);
+    if (!pkAdmin) {
+      setP2pStatus("未连接");
+      setError("未缓存 pk_admin，请从建群/入群流程进入");
+      return;
+    }
+
+    const ac = new AbortController();
+    const gen = meshGen;
+
+    void (async () => {
+      if (meshBusyRef.current) return;
+      meshBusyRef.current = true;
       setP2pStatus("连接中…");
       setError(null);
 
-      const myGroups = await api.listAllGroups(identity.nodeId);
-      const card = myGroups.find((g) => g.group_id === gid);
-      setIsOwner(card?.is_owner ?? false);
-      if (card) setGroupName(card.name);
+      try {
+        const mem = await api.listMembers(gid);
+        if (ac.signal.aborted || gen !== meshGen) return;
 
-      const tree = await api.getTree(gid, identity.nodeId);
-      if (signal.aborted) return;
-      setNodes(tree.nodes);
+        const memberMap = new Map<string, string>();
+        for (const m of mem.members) memberMap.set(m.node_id, m.public_key);
 
-      const memberMap = new Map<string, string>();
-      const mem = await api.listMembers(gid);
-      for (const m of mem.members) memberMap.set(m.node_id, m.public_key);
+        await startGroupMesh({
+          groupId: gid,
+          nodeId,
+          adminPublicKeyBase64Url: pkAdmin,
+          memberPublicKeys: memberMap,
+          getJwt: async () => {
+            const r = await api.refreshJwt(gid, nodeId, "root");
+            return r.jwt;
+          },
+        });
 
-      await startGroupMesh({
-        groupId: gid,
-        nodeId: identity.nodeId,
-        adminPublicKeyBase64Url: pkAdmin,
-        memberPublicKeys: memberMap,
-        getJwt: async () => {
-          const r = await api.refreshJwt(gid, identity.nodeId, "root");
-          return r.jwt;
-        },
-      });
-      if (signal.aborted) return;
+        if (ac.signal.aborted || gen !== meshGen) return;
+        setP2pStatus("已连接");
+        setError(null);
+      } catch (e) {
+        if (ac.signal.aborted || gen !== meshGen) return;
+        setError(e instanceof Error ? e.message : "P2P 连接失败");
+        setP2pStatus("信令未连接");
+      } finally {
+        meshBusyRef.current = false;
+      }
+    })();
 
-      setP2pStatus("已连接");
-      setError(null);
-    },
-    [gid, identity],
-  );
-
-  useEffect(() => {
-    if (!identity || !gid) return;
-    const ac = new AbortController();
-    void connectMesh(ac.signal).catch((e) => {
-      if (ac.signal.aborted) return;
-      setError(e instanceof Error ? e.message : "P2P 连接失败");
-      setP2pStatus("信令未连接");
-    });
     return () => {
       ac.abort();
+      meshBusyRef.current = false;
       void stopGroupMesh();
     };
-  }, [identity, gid, meshGen, connectMesh]);
+  }, [gid, nodeId, meshGen]);
 
   async function refreshTree() {
-    if (!identity) return;
-    const tree = await api.getTree(gid, identity.nodeId);
+    if (!nodeId) return;
+    const tree = await api.getTree(gid, nodeId);
     setNodes(tree.nodes);
   }
 
@@ -112,12 +142,47 @@ export default function GroupPage() {
     setMeshGen((n) => n + 1);
   }
 
+  async function renameSelected() {
+    if (!nodeId || selectedId === ROOT_DOC_ID) return;
+    const title = renameTitle.trim();
+    if (!title) {
+      setError("名称不能为空");
+      return;
+    }
+    try {
+      await api.renameDoc(gid, nodeId, selectedId, title);
+      await refreshTree();
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "重命名失败");
+    }
+  }
+
+  async function deleteSelected() {
+    if (!nodeId || selectedId === ROOT_DOC_ID) return;
+    const label = selectedNode?.title ?? selectedId;
+    const hint = selectedIsFolder
+      ? "仅可删除空目录，且无法恢复。"
+      : "删除后无法恢复。";
+    if (!window.confirm(`确定删除「${label}」？${hint}`)) return;
+    try {
+      await api.deleteDoc(gid, nodeId, selectedId);
+      localStorage.removeItem(`dpe_doc_${gid}_${selectedId}`);
+      const parentId = selectedNode?.parentDocId ?? ROOT_DOC_ID;
+      await refreshTree();
+      selectNode(parentId);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "删除失败");
+    }
+  }
+
   async function createChild(is_folder: boolean) {
-    if (!identity || !parentIsFolder) return;
+    if (!nodeId || !parentIsFolder) return;
     const parentId = selectedIsFolder ? selectedId : (selectedNode?.parentDocId ?? ROOT_DOC_ID);
     const doc_id = crypto.randomUUID();
     try {
-      await api.createChild(gid, identity.nodeId, {
+      await api.createChild(gid, nodeId, {
         parent_doc_id: parentId,
         doc_id,
         title: newItemTitle.trim() || (is_folder ? "未命名目录" : "未命名文档"),
@@ -128,7 +193,7 @@ export default function GroupPage() {
       if (!is_folder) selectNode(doc_id);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : is_folder ? "创建目录失败" : "创建文档失败");
+      setError(e instanceof Error ? e.message : is_folder ? "新建目录失败" : "新建文档失败");
     }
   }
 
@@ -136,7 +201,7 @@ export default function GroupPage() {
     return (
       <main className="app-page">
         <p>
-          请先 <Link to="/">生成身份</Link>
+          请先 <Link to="/">完成引导</Link>
         </p>
       </main>
     );
@@ -148,13 +213,14 @@ export default function GroupPage() {
   const createParent = nodes.find((n) => n.docId === createParentId);
 
   return (
-    <main className="app-group-page">
+    <main className="app-group-page app-group-page--shell">
       <header className="app-page-header app-group-page__header">
         <div>
           <p className="app-breadcrumb">
             <Link to="/dashboard">总览</Link>
             <span> / </span>
             <span>{groupName}</span>
+            <span className="app-muted"> · {myName}</span>
           </p>
           <h1>{groupName}</h1>
           <p className="app-muted">
@@ -182,7 +248,7 @@ export default function GroupPage() {
       <div className="app-group-layout">
         <aside className="app-group-sidebar">
           <h2>文档</h2>
-          <p className="app-muted app-group-sidebar__hint">点击目录或文档在同一页查看与编辑</p>
+          <p className="app-muted app-group-sidebar__hint">根目录与文档在同一页查看与编辑</p>
           <DocTreeNav nodes={nodes} groupId={gid} activeId={selectedId} onSelectNode={selectNode} />
           <div className="app-group-sidebar__create">
             <span className="app-muted">
@@ -192,7 +258,7 @@ export default function GroupPage() {
               className="app-input"
               value={newItemTitle}
               onChange={(e) => setNewItemTitle(e.target.value)}
-              placeholder="名称"
+              placeholder="标题"
             />
             <div className="app-form-row">
               <button
@@ -213,16 +279,48 @@ export default function GroupPage() {
               </button>
             </div>
           </div>
+          {selectedId !== ROOT_DOC_ID && (
+            <div className="app-group-sidebar__manage">
+              <h3>当前项</h3>
+              <label className="app-muted" htmlFor="rename-doc-title">
+                名称
+              </label>
+              <input
+                id="rename-doc-title"
+                className="app-input"
+                value={renameTitle}
+                onChange={(e) => setRenameTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void renameSelected();
+                }}
+              />
+              <div className="app-form-row">
+                <button type="button" className="app-btn" onClick={() => void renameSelected()}>
+                  重命名
+                </button>
+                <button
+                  type="button"
+                  className="app-btn app-btn--danger"
+                  onClick={() => void deleteSelected()}
+                >
+                  删除
+                </button>
+              </div>
+              <p className="app-muted app-group-sidebar__hint">
+                需要对该节点具备可治理权限（角色 ≥ 3）。目录须为空才能删除。
+              </p>
+            </div>
+          )}
         </aside>
 
         <section className="app-group-main">
           {selectedIsFolder ? (
             <div className="app-empty-state">
               <h2>{selectedNode?.title ?? "根目录"}</h2>
-              <p className="app-muted">选择左侧文档进行协作编辑，或在当前目录下新建子项。</p>
+              <p className="app-muted">选择左侧文档进入协作编辑，或在当前目录下新建条目。</p>
             </div>
           ) : (
-            <DocInlineEditor groupId={gid} docId={selectedId} />
+            <DocInlineEditor key={selectedId} groupId={gid} docId={selectedId} />
           )}
         </section>
 

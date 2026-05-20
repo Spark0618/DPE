@@ -73,7 +73,7 @@ export type GovernancePayload = {
     default_member_role_id: string;
     create_child_template: Record<string, number>;
   } | null;
-  members: { node_id: string; public_key: string }[];
+  members: { node_id: string; public_key: string; display_name?: string }[];
 };
 
 export type MyRoleOnDocRow = {
@@ -92,11 +92,19 @@ export type DocRoleAclRow = {
 };
 
 export const api = {
+  syncDisplayName(nodeId: string, displayName: string) {
+    return request<{ ok: boolean; display_name: string }>("/users/me/display-name", {
+      method: "POST",
+      body: JSON.stringify({ node_id: nodeId, display_name: displayName }),
+    });
+  },
+
   createGroup(body: {
     name: string;
     description?: string;
     owner_node_id: string;
     owner_public_key: string;
+    owner_display_name?: string;
     control_mode?: "owner_direct" | "proxy";
   }) {
     return request<{
@@ -134,7 +142,10 @@ export const api = {
     );
   },
 
-  acceptInvitation(invitationId: string, body: { node_id: string; public_key: string }) {
+  acceptInvitation(
+    invitationId: string,
+    body: { node_id: string; public_key: string; display_name?: string },
+  ) {
     return request<{ group_id: string; pk_admin: string }>(
       `/invitations/${invitationId}/accept`,
       { method: "POST", body: JSON.stringify(body) },
@@ -172,6 +183,13 @@ export const api = {
     });
   },
 
+  dissolveGroup(groupId: string, callerNodeId: string) {
+    return request<{ ok: boolean }>(
+      `/groups/${groupId}/dissolve?caller_node_id=${encodeURIComponent(callerNodeId)}`,
+      { method: "POST" },
+    );
+  },
+
   getDocRoleAcls(groupId: string, docId: string, callerNodeId: string) {
     return request<DocRoleAclRow>(
       `/groups/${groupId}/docs/${docId}/role-acls?caller_node_id=${encodeURIComponent(callerNodeId)}`,
@@ -200,6 +218,30 @@ export const api = {
     );
   },
 
+  getDocSnapshot(groupId: string, docId: string, nodeId: string) {
+    return request<{
+      snapshot: {
+        state_update_base64: string;
+        key_version: number;
+        updated_at: string;
+        updated_by_node_id: string;
+      } | null;
+    }>(
+      `/groups/${groupId}/docs/${encodeURIComponent(docId)}/snapshot?node_id=${encodeURIComponent(nodeId)}`,
+    );
+  },
+
+  putDocSnapshot(
+    groupId: string,
+    docId: string,
+    body: { node_id: string; state_update_base64: string },
+  ) {
+    return request<{ ok: boolean }>(
+      `/groups/${groupId}/docs/${encodeURIComponent(docId)}/snapshot`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+
   setDocRoleAcl(
     groupId: string,
     callerNodeId: string,
@@ -224,6 +266,26 @@ export const api = {
       {
         method: "POST",
         body: JSON.stringify({ op: "CreateChild", ...body }),
+      },
+    );
+  },
+
+  deleteDoc(groupId: string, callerNodeId: string, docId: string) {
+    return request<{ ok: boolean }>(
+      `/groups/${groupId}/rpc?caller_node_id=${encodeURIComponent(callerNodeId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ op: "DeleteDoc", doc_id: docId }),
+      },
+    );
+  },
+
+  renameDoc(groupId: string, callerNodeId: string, docId: string, title: string) {
+    return request<{ ok: boolean }>(
+      `/groups/${groupId}/rpc?caller_node_id=${encodeURIComponent(callerNodeId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ op: "RenameDoc", doc_id: docId, title }),
       },
     );
   },

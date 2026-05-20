@@ -3,7 +3,8 @@ import websocket from "@fastify/websocket";
 import { SignalingRooms } from "./rooms.js";
 
 async function main() {
-  const port = Number(process.env.SIGNALING_PORT ?? process.env.PORT ?? 3002);
+  // Do not fall back to PORT — Turbo/other tools may set it and break ws://localhost:3002/ws.
+  const port = Number(process.env.SIGNALING_PORT ?? 3002);
   const app = Fastify({ logger: false });
   await app.register(websocket);
 

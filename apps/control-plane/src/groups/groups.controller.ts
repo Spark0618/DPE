@@ -14,6 +14,8 @@ import type {
   JoinGroupDto,
   RefreshJwtDto,
   UpdateGovernanceDto,
+  UpdateDisplayNameDto,
+  PutDocSnapshotDto,
 } from "./groups.dto.js";
 
 @Controller()
@@ -23,6 +25,11 @@ export class GroupsController {
   @Post("groups")
   createGroup(@Body() body: CreateGroupDto) {
     return this.groups.createGroup(body);
+  }
+
+  @Post("users/me/display-name")
+  updateDisplayName(@Body() body: UpdateDisplayNameDto) {
+    return this.groups.updateMemberDisplayName(body.node_id, body.display_name);
   }
 
   @Get("users/me/groups")
@@ -46,6 +53,14 @@ export class GroupsController {
   @Post("groups/:id/governance")
   updateGovernance(@Param("id") id: string, @Body() body: UpdateGovernanceDto) {
     return this.groups.updateGovernance(id, body);
+  }
+
+  @Post("groups/:id/dissolve")
+  dissolve(
+    @Param("id") id: string,
+    @Query("caller_node_id") callerNodeId: string,
+  ) {
+    return this.groups.dissolveGroup(id, callerNodeId);
   }
 
   @Get("groups/:id/docs/:docId/role-acls")
@@ -87,6 +102,44 @@ export class GroupsController {
     @Query("node_id") nodeId: string,
   ) {
     return this.groups.rejectInvitation(invitationId, nodeId);
+  }
+
+
+  @Get("groups/:id/docs/:docId/snapshot")
+  getDocSnapshot(
+    @Param("id") id: string,
+    @Param("docId") docId: string,
+    @Query("node_id") nodeId: string,
+  ) {
+    return this.groups.getDocSnapshot(id, docId, nodeId);
+  }
+
+  @Post("groups/:id/docs/:docId/snapshot")
+  putDocSnapshot(
+    @Param("id") id: string,
+    @Param("docId") docId: string,
+    @Body() body: PutDocSnapshotDto,
+  ) {
+    return this.groups.putDocSnapshot(id, docId, body.node_id, body.state_update_base64);
+  }
+
+
+  @Get("groups/:id/docs/:docId/snapshot")
+  getDocSnapshot(
+    @Param("id") id: string,
+    @Param("docId") docId: string,
+    @Query("node_id") nodeId: string,
+  ) {
+    return this.groups.getDocSnapshot(id, docId, nodeId);
+  }
+
+  @Post("groups/:id/docs/:docId/snapshot")
+  putDocSnapshot(
+    @Param("id") id: string,
+    @Param("docId") docId: string,
+    @Body() body: PutDocSnapshotDto,
+  ) {
+    return this.groups.putDocSnapshot(id, docId, body.node_id, body.state_update_base64);
   }
 
   @Post("groups/:id/jwt/refresh")

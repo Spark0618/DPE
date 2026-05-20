@@ -20,12 +20,22 @@ import {
   syncMemberAllDocs,
   syncMemberDocGrant,
 } from "./groups-rbac.js";
+
+function normalizeDisplayName(raw?: string): string {
+  const s = (raw ?? "").trim();
+  if (s.length < 1 || s.length > 32) {
+    throw new BadRequestException("display_name must be 1-32 characters");
+  }
+  return s;
+}
+
 import type {
   CreateGroupDto,
   CreateInvitationDto,
   JoinGroupDto,
   RefreshJwtDto,
   UpdateGovernanceDto,
+  UpdateDisplayNameDto,
 } from "./groups.dto.js";
 
 @Injectable()
@@ -59,6 +69,9 @@ export class GroupsService {
             create: {
               nodeId: dto.owner_node_id,
               publicKey: dto.owner_public_key,
+              displayName: dto.owner_display_name?.trim()
+                ? normalizeDisplayName(dto.owner_display_name)
+                : "",
             },
           },
           aclGrants: {
@@ -104,10 +117,22 @@ export class GroupsService {
 
   async joinGroup(groupId: string, dto: JoinGroupDto) {
     const group = await this.requireGroup(groupId);
+    const displayName = dto.display_name?.trim()
+      ? normalizeDisplayName(dto.display_name)
+      : undefined;
     await this.prisma.member.upsert({
       where: { groupId_nodeId: { groupId, nodeId: dto.node_id } },
-      create: { groupId, nodeId: dto.node_id, publicKey: dto.public_key },
-      update: { publicKey: dto.public_key, leftAt: null },
+      create: {
+        groupId,
+        nodeId: dto.node_id,
+        publicKey: dto.public_key,
+        displayName: displayName ?? "",
+      },
+      update: {
+        publicKey: dto.public_key,
+        leftAt: null,
+        ...(displayName ? { displayName } : {}),
+      },
     });
     return {
       group_id: group.id,
@@ -178,6 +203,95 @@ export class GroupsService {
     await this.prisma.invitation.update({
       where: { id: invitationId },
       data: { status: "rejected" },
+    });
+    return { ok: true };
+  }
+
+
+  private static readonly MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
+
+  async getDocSnapshot(groupId: string, docId: string, nodeId: string) {
+    const group = await this.requireGroup(groupId);
+    await this.requireMember(groupId, nodeId);
+    const accessLevel = await resolveAccessLevel(
+      this.prisma,
+      groupId,
+      nodeId,
+      docId,
+      group.ownerNodeId,
+    );
+    if (accessLevel < 1) {
+      throw new ForbiddenException("no access to doc");
+    }
+    const doc = await this.prisma.docNode.findUnique({
+      where: { groupId_docId: { groupId, docId } },
+    });
+    if (!doc) throw new NotFoundException("doc not found");
+    if (doc.isFolder) {
+      return { snapshot: null as null };
+    }
+    const row = await this.prisma.docSnapshot.findUnique({
+      where: { groupId_docId: { groupId, docId } },
+    });
+    if (!row) return { snapshot: null };
+    return {
+      snapshot: {
+        state_update_base64: row.stateBase64,
+        key_version: row.keyVersion,
+        updated_at: row.updatedAt.toISOString(),
+        updated_by_node_id: row.updatedByNodeId,
+      },
+    };
+  }
+
+  async putDocSnapshot(
+    groupId: string,
+    docId: string,
+    nodeId: string,
+    stateUpdateBase64: string,
+  ) {
+    const group = await this.requireGroup(groupId);
+    await this.requireMember(groupId, nodeId);
+    const accessLevel = await resolveAccessLevel(
+      this.prisma,
+      groupId,
+      nodeId,
+      docId,
+      group.ownerNodeId,
+    );
+    if (accessLevel < 2) {
+      throw new ForbiddenException("write access required to save snapshot");
+    }
+    const doc = await this.prisma.docNode.findUnique({
+      where: { groupId_docId: { groupId, docId } },
+    });
+    if (!doc) throw new NotFoundException("doc not found");
+    if (doc.isFolder) {
+      throw new BadRequestException("folders have no document content");
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = base64UrlToBytes(stateUpdateBase64);
+    } catch {
+      throw new BadRequestException("invalid state_update_base64");
+    }
+    if (bytes.length === 0 || bytes.length > GroupsService.MAX_SNAPSHOT_BYTES) {
+      throw new BadRequestException("snapshot size out of range");
+    }
+    await this.prisma.docSnapshot.upsert({
+      where: { groupId_docId: { groupId, docId } },
+      create: {
+        groupId,
+        docId,
+        keyVersion: doc.keyVersion,
+        stateBase64: stateUpdateBase64,
+        updatedByNodeId: nodeId,
+      },
+      update: {
+        keyVersion: doc.keyVersion,
+        stateBase64: stateUpdateBase64,
+        updatedByNodeId: nodeId,
+      },
     });
     return { ok: true };
   }
@@ -278,6 +392,7 @@ export class GroupsService {
       members: rows.map((m) => ({
         node_id: m.nodeId,
         public_key: m.publicKey,
+        display_name: m.displayName,
       })),
     };
   }
@@ -405,6 +520,20 @@ export class GroupsService {
       return { ok: true, doc_id: rpc.doc_id };
     }
 
+    if (rpc.op === "RenameDoc") {
+      if (rpc.doc_id === ROOT_DOC_ID) {
+        throw new BadRequestException("cannot rename root folder");
+      }
+      await this.requireOperable(groupId, callerNodeId, rpc.doc_id);
+      const title = rpc.title.trim();
+      if (!title) throw new BadRequestException("title required");
+      await this.prisma.docNode.update({
+        where: { groupId_docId: { groupId, docId: rpc.doc_id } },
+        data: { title },
+      });
+      return { ok: true };
+    }
+
     if (rpc.op === "DeleteDoc") {
       if (rpc.doc_id === ROOT_DOC_ID) {
         throw new BadRequestException("cannot delete root folder");
@@ -416,10 +545,13 @@ export class GroupsService {
       if (childCount > 0) {
         throw new BadRequestException("folder is not empty");
       }
-      await this.prisma.docNode.delete({
-        where: { groupId_docId: { groupId, docId: rpc.doc_id } },
-      });
-      await this.prisma.aclGrant.deleteMany({ where: { groupId, docId: rpc.doc_id } });
+      await this.prisma.$transaction([
+        this.prisma.docRoleAcl.deleteMany({ where: { groupId, docId: rpc.doc_id } }),
+        this.prisma.aclGrant.deleteMany({ where: { groupId, docId: rpc.doc_id } }),
+        this.prisma.docNode.delete({
+          where: { groupId_docId: { groupId, docId: rpc.doc_id } },
+        }),
+      ]);
       return { ok: true };
     }
 
@@ -448,6 +580,15 @@ export class GroupsService {
       out.push(await this.groupCard(m.group, nodeId, false));
     }
     return out;
+  }
+
+  async updateMemberDisplayName(nodeId: string, displayName: string) {
+    const name = normalizeDisplayName(displayName);
+    await this.prisma.member.updateMany({
+      where: { nodeId, leftAt: null },
+      data: { displayName: name },
+    });
+    return { ok: true, display_name: name };
   }
 
   async getGovernance(groupId: string, callerNodeId: string) {
@@ -490,8 +631,21 @@ export class GroupsService {
             create_child_template: rules.createChildTemplate as Record<string, number>,
           }
         : null,
-      members: members.map((m) => ({ node_id: m.nodeId, public_key: m.publicKey })),
+      members: members.map((m) => ({
+        node_id: m.nodeId,
+        public_key: m.publicKey,
+        display_name: m.displayName,
+      })),
     };
+  }
+
+  async dissolveGroup(groupId: string, callerNodeId: string) {
+    const group = await this.requireGroup(groupId);
+    if (group.ownerNodeId !== callerNodeId) {
+      throw new ForbiddenException("only group owner may dissolve the group");
+    }
+    await this.prisma.group.delete({ where: { id: groupId } });
+    return { ok: true };
   }
 
   async updateGovernance(groupId: string, dto: UpdateGovernanceDto) {

@@ -14,40 +14,63 @@ export function DocNodePermissionsPanel({
   node: DocNodeRow | undefined;
   isOwner: boolean;
 }) {
-  const identity = loadIdentity();
+  const nodeId = loadIdentity()?.nodeId ?? "";
   const [docAcls, setDocAcls] = useState<DocRoleAclRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const docId = node?.docId;
   const isFolder = node ? isFolderDoc(node) : true;
+  const visibleAcls = docAcls?.doc_id === docId ? docAcls : null;
 
   useEffect(() => {
-    if (!identity || !docId) {
+    if (!nodeId || !docId) {
       setDocAcls(null);
+      setLoading(false);
+      setError(null);
       return;
     }
+
+    let cancelled = false;
     setLoading(true);
     setError(null);
+
     void api
-      .getDocRoleAcls(groupId, docId, identity.nodeId)
-      .then(setDocAcls)
-      .catch((e) => {
-        setDocAcls(null);
-        setError(e instanceof Error ? e.message : "无法加载权限");
+      .getDocRoleAcls(groupId, docId, nodeId)
+      .then((data) => {
+        if (cancelled) return;
+        setDocAcls(data);
+        setError(null);
       })
-      .finally(() => setLoading(false));
-  }, [identity, groupId, docId]);
+      .catch((e) => {
+        if (cancelled) return;
+        setDocAcls(null);
+        const msg = e instanceof Error ? e.message : "无法加载权限";
+        if (msg.toLowerCase().includes("failed to fetch")) {
+          setError("无法连接控制平面，请确认 pnpm dev 已启动");
+        } else {
+          setError(msg);
+        }
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groupId, docId, nodeId]);
 
   async function setDocRoleAcl(roleId: string, level: number) {
-    if (!identity || !docId || !docAcls?.can_manage_acl) return;
+    if (!nodeId || !docId || !visibleAcls?.can_manage_acl) return;
     try {
-      await api.setDocRoleAcl(groupId, identity.nodeId, {
+      await api.setDocRoleAcl(groupId, nodeId, {
         doc_id: docId,
         group_role_id: roleId,
         access_level: level,
       });
-      setDocAcls(await api.getDocRoleAcls(groupId, docId, identity.nodeId));
+      setDocAcls(await api.getDocRoleAcls(groupId, docId, nodeId));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败");
@@ -57,13 +80,14 @@ export function DocNodePermissionsPanel({
   if (!node) {
     return (
       <aside className="app-group-inspector">
-        <p className="app-muted">在左侧选择目录或文档</p>
+        <p className="app-muted">请先选择目录或文档</p>
       </aside>
     );
   }
 
-  const myLevel = docAcls?.my_access_level ?? 0;
-  const canManage = docAcls?.can_manage_acl ?? isOwner;
+  const myLevel = visibleAcls?.my_access_level ?? 0;
+  const canManage = visibleAcls?.can_manage_acl ?? isOwner;
+  const showLoading = loading && !visibleAcls;
 
   return (
     <aside className="app-group-inspector">
@@ -79,18 +103,23 @@ export function DocNodePermissionsPanel({
         </p>
       )}
 
-      {loading && <p className="app-muted">加载中…</p>}
-      {error && <p className="app-error">{error}</p>}
+      {showLoading && <p className="app-muted">加载中…</p>}
+      {loading && visibleAcls && (
+        <p className="app-muted" style={{ fontSize: 11, opacity: 0.7 }}>
+          刷新中…
+        </p>
+      )}
+      {error && !loading && <p className="app-error">{error}</p>}
 
-      {!loading && docAcls && myLevel >= 1 && (
+      {visibleAcls && myLevel >= 1 && (
         <>
           <section className="app-my-roles">
             <h3>我的角色与权限</h3>
-            {docAcls.my_roles.length === 0 ? (
+            {visibleAcls.my_roles.length === 0 ? (
               <p className="app-muted">尚未分配群组角色</p>
             ) : (
               <ul className="app-my-roles__list">
-                {docAcls.my_roles.map((r) => (
+                {visibleAcls.my_roles.map((r) => (
                   <li key={r.role_id}>
                     <span className="app-my-roles__name" style={{ color: r.color }}>
                       {r.name}
@@ -104,8 +133,8 @@ export function DocNodePermissionsPanel({
               在此节点的有效权限：
               <strong>{ROLE_LABELS[myLevel] ?? "不可见"}</strong>
             </p>
-            {docAcls.my_roles.length > 1 && (
-              <p className="app-muted app-my-roles__hint">持有多个角色时，取各角色权限的最高级别。</p>
+            {visibleAcls.my_roles.length > 1 && (
+              <p className="app-muted app-my-roles__hint">拥有多个角色时，取各角色权限的最高级别。</p>
             )}
           </section>
 
@@ -113,9 +142,9 @@ export function DocNodePermissionsPanel({
             <details className="app-collapsible">
               <summary className="app-collapsible__summary">各角色权限</summary>
               <div className="app-collapsible__body">
-                <p className="app-muted">配置每个群组角色在此节点上的权限级别。</p>
+                <p className="app-muted">配置每个群组角色在此节点上的权限级别</p>
                 <ul className="app-template-list app-node-permissions">
-                  {docAcls.roles.map((r) => (
+                  {visibleAcls.roles.map((r) => (
                     <li key={r.id}>
                       <span className="app-node-permissions__role" style={{ color: r.color }}>
                         {r.name}
@@ -123,6 +152,7 @@ export function DocNodePermissionsPanel({
                       <select
                         className="app-select"
                         value={r.access_level}
+                        disabled={loading}
                         onChange={(e) => void setDocRoleAcl(r.id, Number(e.target.value))}
                       >
                         {Object.entries(ROLE_LABELS).map(([v, label]) => (
@@ -140,11 +170,11 @@ export function DocNodePermissionsPanel({
         </>
       )}
 
-      {!loading && docAcls && myLevel < 1 && (
-        <p className="app-muted">你无权查看此节点。</p>
+      {!loading && visibleAcls && myLevel < 1 && (
+        <p className="app-muted">无权查看此节点。</p>
       )}
-      {!loading && !docAcls && !error && (
-        <p className="app-muted">你无权查看此节点的权限信息。</p>
+      {!loading && !visibleAcls && !error && (
+        <p className="app-muted">无权查看此节点的权限信息。</p>
       )}
     </aside>
   );

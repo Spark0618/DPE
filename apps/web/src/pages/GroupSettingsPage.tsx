@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, type GovernancePayload } from "../lib/api";
+import { stopGroupMesh } from "../lib/mesh-context";
 import { loadIdentity } from "../lib/identity";
+import { memberDisplayLabel } from "../lib/display-names";
 import { ROLE_LABELS } from "../lib/roles";
 
 function rolesForMember(gov: GovernancePayload, nodeId: string): string[] {
@@ -11,7 +13,9 @@ function rolesForMember(gov: GovernancePayload, nodeId: string): string[] {
 export default function GroupSettingsPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const identity = loadIdentity();
+  const nodeId = identity?.nodeId ?? "";
   const gid = groupId ?? "";
+  const navigate = useNavigate();
 
   const [gov, setGov] = useState<GovernancePayload | null>(null);
   const [inviteUid, setInviteUid] = useState("");
@@ -23,9 +27,9 @@ export default function GroupSettingsPage() {
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!identity || !gid) return;
+    if (!nodeId || !gid) return;
     try {
-      const data = await api.getGovernance(gid, identity.nodeId);
+      const data = await api.getGovernance(gid, nodeId);
       setGov(data);
       const map: Record<string, string[]> = {};
       for (const m of data.members) {
@@ -34,20 +38,20 @@ export default function GroupSettingsPage() {
       setMemberRoles(map);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "仅群主可管理群组设置");
+      setError(e instanceof Error ? e.message : "非群主或无法加载群组设置");
     }
-  }, [identity, gid]);
+  }, [nodeId, gid]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   async function saveRules() {
-    if (!identity || !gov?.default_rules) return;
+    if (!nodeId || !gov?.default_rules) return;
     setBusy(true);
     try {
       await api.updateGovernance(gid, {
-        caller_node_id: identity.nodeId,
+        caller_node_id: nodeId,
         default_member_role_id: gov.default_rules.default_member_role_id,
         create_child_template: gov.default_rules.create_child_template,
       });
@@ -61,11 +65,11 @@ export default function GroupSettingsPage() {
   }
 
   async function createRole() {
-    if (!identity || !newRoleName.trim()) return;
+    if (!nodeId || !newRoleName.trim()) return;
     setBusy(true);
     try {
       await api.updateGovernance(gid, {
-        caller_node_id: identity.nodeId,
+        caller_node_id: nodeId,
         create_roles: [{ name: newRoleName.trim(), color: newRoleColor }],
       });
       setNewRoleName("");
@@ -78,36 +82,55 @@ export default function GroupSettingsPage() {
     }
   }
 
-  async function saveMemberRoles(nodeId: string) {
-    if (!identity) return;
+  async function saveMemberRoles(memberNodeId: string) {
+    if (!nodeId) return;
     setBusy(true);
     try {
       await api.updateGovernance(gid, {
-        caller_node_id: identity.nodeId,
-        member_roles: [{ node_id: nodeId, role_ids: memberRoles[nodeId] ?? [] }],
+        caller_node_id: nodeId,
+        member_roles: [{ node_id: memberNodeId, role_ids: memberRoles[memberNodeId] ?? [] }],
       });
       setToast("成员角色已更新");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "更新失败");
+      setError(e instanceof Error ? e.message : "保存失败");
     } finally {
       setBusy(false);
     }
   }
 
-  function toggleMemberRole(nodeId: string, roleId: string) {
+  function toggleMemberRole(memberNodeId: string, roleId: string) {
     setMemberRoles((prev) => {
-      const cur = prev[nodeId] ?? [];
+      const cur = prev[memberNodeId] ?? [];
       const next = cur.includes(roleId) ? cur.filter((id) => id !== roleId) : [...cur, roleId];
-      return { ...prev, [nodeId]: next };
+      return { ...prev, [memberNodeId]: next };
     });
   }
 
-  async function sendInvite() {
-    if (!identity || !inviteUid.trim()) return;
+  async function dissolveGroup() {
+    if (!nodeId) return;
+    const name = gov?.name ?? gid;
+    if (!window.confirm(`确定解散群组「${name}」？所有成员、文档与权限将被永久删除，无法恢复。`)) {
+      return;
+    }
     setBusy(true);
     try {
-      await api.createInvitation(gid, identity.nodeId, inviteUid.trim());
+      await api.dissolveGroup(gid, nodeId);
+      localStorage.removeItem(`dpe_group_${gid}_pk_admin`);
+      await stopGroupMesh();
+      navigate("/dashboard", { replace: true });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "解散群组失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendInvite() {
+    if (!nodeId || !inviteUid.trim()) return;
+    setBusy(true);
+    try {
+      await api.createInvitation(gid, nodeId, inviteUid.trim());
       setInviteUid("");
       setToast("邀请已发送");
     } catch (e) {
@@ -120,7 +143,7 @@ export default function GroupSettingsPage() {
   if (!identity) {
     return (
       <main className="app-page">
-        <Link to="/">生成身份</Link>
+        <Link to="/">完成引导</Link>
       </main>
     );
   }
@@ -147,7 +170,7 @@ export default function GroupSettingsPage() {
       {gov && (
         <>
           <section className="app-panel">
-            <h2>创建角色</h2>
+            <h2>定义角色</h2>
             <p className="app-muted">成员可同时拥有多个角色；有效权限取各角色在文档上的最高级别。</p>
             <div className="app-form-row">
               <input
@@ -181,7 +204,8 @@ export default function GroupSettingsPage() {
           </section>
 
           <section className="app-panel">
-            <h2>成员 ↔ 角色（可多选）</h2>
+            <h2>成员 · 角色（可多选）</h2>
+            <p className="app-muted">勾选后点击「保存」生效；未保存前切换页面会丢失修改。</p>
             <table className="app-table">
               <thead>
                 <tr>
@@ -194,7 +218,7 @@ export default function GroupSettingsPage() {
                 {gov.members.map((m) => (
                   <tr key={m.node_id}>
                     <td>
-                      <code>{m.node_id.slice(0, 12)}…</code>
+                      <strong>{memberDisplayLabel(m, nodeId)}</strong>
                     </td>
                     <td>
                       <div className="app-role-checkboxes">
@@ -203,6 +227,7 @@ export default function GroupSettingsPage() {
                             <input
                               type="checkbox"
                               checked={(memberRoles[m.node_id] ?? []).includes(r.id)}
+                              disabled={busy}
                               onChange={() => toggleMemberRole(m.node_id, r.id)}
                             />
                             <span style={{ color: r.color }}>{r.name}</span>
@@ -233,6 +258,7 @@ export default function GroupSettingsPage() {
               <span>新成员默认角色（入群时自动分配）</span>
               <select
                 className="app-select"
+                disabled={busy || !gov.default_rules}
                 value={gov.default_rules?.default_member_role_id ?? ""}
                 onChange={(e) =>
                   setGov({
@@ -256,6 +282,7 @@ export default function GroupSettingsPage() {
                   <span style={{ color: r.color, fontWeight: 600 }}>{r.name}</span>
                   <select
                     className="app-select"
+                    disabled={busy || !gov.default_rules}
                     value={String(gov.default_rules?.create_child_template?.[r.id] ?? 0)}
                     onChange={(e) => {
                       const tpl = { ...(gov.default_rules?.create_child_template ?? {}) };
@@ -287,7 +314,7 @@ export default function GroupSettingsPage() {
             <div className="app-search-row">
               <input
                 className="app-input"
-                placeholder="受邀人 Node ID"
+                placeholder="对方节点 ID（技术标识）"
                 value={inviteUid}
                 onChange={(e) => setInviteUid(e.target.value)}
               />
@@ -295,6 +322,18 @@ export default function GroupSettingsPage() {
                 发送邀请
               </button>
             </div>
+          </section>
+          <section className="app-panel app-panel--danger">
+            <h2>危险操作</h2>
+            <p className="app-muted">解散后群组、文档、成员与邀请记录将永久删除，无法恢复。</p>
+            <button
+              type="button"
+              className="app-btn app-btn--danger"
+              disabled={busy}
+              onClick={() => void dissolveGroup()}
+            >
+              解散群组
+            </button>
           </section>
         </>
       )}

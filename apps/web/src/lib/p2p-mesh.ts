@@ -8,7 +8,11 @@ import { authEnvelopeSchema } from "@dpe/proto";
 import { SecureYjsProvider, type PeerSession } from "@dpe/yjs-provider";
 import { base64UrlToBytes } from "@dpe/crypto";
 
-const SIGNALING = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3002/ws";
+function signalingUrl(): string {
+  const raw = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3002/ws";
+  const trimmed = raw.trim().replace(/\/$/, "");
+  return trimmed.endsWith("/ws") ? trimmed : `${trimmed}/ws`;
+}
 
 export type MeshConfig = {
   groupId: string;
@@ -49,7 +53,7 @@ export class GroupP2pMesh {
   }
 
   async start(): Promise<void> {
-    const url = SIGNALING;
+    const url = signalingUrl();
     this.ws = new WebSocket(url);
     await new Promise<void>((resolve, reject) => {
       const ws = this.ws!;

@@ -30,11 +30,18 @@ export const deleteDocRpcSchema = z.object({
   doc_id: z.string(),
 });
 
+export const renameDocRpcSchema = z.object({
+  op: z.literal("RenameDoc"),
+  doc_id: z.string(),
+  title: z.string().min(1).max(200),
+});
+
 export const operableRpcSchema = z.discriminatedUnion("op", [
   setAclRpcSchema,
   setDocRoleAclRpcSchema,
   createChildRpcSchema,
   deleteDocRpcSchema,
+  renameDocRpcSchema,
 ]);
 
 export type OperableRpc = z.infer<typeof operableRpcSchema>;

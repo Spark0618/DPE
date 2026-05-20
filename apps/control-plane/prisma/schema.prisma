@@ -89,12 +89,13 @@ model DocRoleAcl {
 }
 
 model Member {
-  id        String    @id @default(uuid())
-  groupId   String    @map("group_id")
-  nodeId    String    @map("node_id")
-  publicKey String    @map("public_key")
-  joinedAt  DateTime  @default(now()) @map("joined_at")
-  leftAt    DateTime? @map("left_at")
+  id          String    @id @default(uuid())
+  groupId     String    @map("group_id")
+  nodeId      String    @map("node_id")
+  publicKey   String    @map("public_key")
+  displayName String    @default("") @map("display_name")
+  joinedAt    DateTime  @default(now()) @map("joined_at")
+  leftAt      DateTime? @map("left_at")
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
@@ -127,12 +128,28 @@ model DocNode {
   keyVersion  Int      @default(1) @map("key_version")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  keys  DocumentKey[]
+  group    Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  keys     DocumentKey[]
+  snapshot DocSnapshot?
 
   @@id([groupId, docId])
   @@index([groupId, parentDocId])
   @@map("doc_nodes")
+}
+
+/// DEV: latest Yjs encoded state for single-editor / offline reload (P2P remains authoritative for live merge).
+model DocSnapshot {
+  groupId         String   @map("group_id")
+  docId           String   @map("doc_id")
+  keyVersion      Int      @map("key_version")
+  stateBase64     String   @map("state_base64") @db.Text
+  updatedByNodeId String   @map("updated_by_node_id")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  doc DocNode @relation(fields: [groupId, docId], references: [groupId, docId], onDelete: Cascade)
+
+  @@id([groupId, docId])
+  @@map("doc_snapshots")
 }
 
 /// DEV: server-side doc key material for issuing JWT (replace with HSM in production).

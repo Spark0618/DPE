@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import { AppShell } from "./components/AppShell";
 import DashboardPage from "./pages/DashboardPage";
 import ConnectionsPage from "./pages/ConnectionsPage";
 import OnboardingPage from "./pages/OnboardingPage";
@@ -7,11 +8,11 @@ import GroupPage from "./pages/GroupPage";
 import GroupSettingsPage from "./pages/GroupSettingsPage";
 import DocEditorPage from "./pages/DocEditorPage";
 import DesignRoutes from "./designs/DesignRoutes";
-import { loadIdentity } from "./lib/identity";
+import { hasUserProfile } from "./lib/identity";
 
-function RequireIdentity({ children }: { children: ReactNode }) {
-  if (!loadIdentity()) return <Navigate to="/" replace />;
-  return children;
+function RequireProfile({ children }: { children: ReactNode }) {
+  if (!hasUserProfile()) return <Navigate to="/" replace />;
+  return <AppShell>{children}</AppShell>;
 }
 
 export default function App() {
@@ -22,41 +23,41 @@ export default function App() {
       <Route
         path="/dashboard"
         element={
-          <RequireIdentity>
+          <RequireProfile>
             <DashboardPage />
-          </RequireIdentity>
+          </RequireProfile>
         }
       />
       <Route
         path="/connections"
         element={
-          <RequireIdentity>
+          <RequireProfile>
             <ConnectionsPage />
-          </RequireIdentity>
+          </RequireProfile>
         }
       />
       <Route
         path="/groups/:groupId"
         element={
-          <RequireIdentity>
+          <RequireProfile>
             <GroupPage />
-          </RequireIdentity>
+          </RequireProfile>
         }
       />
       <Route
         path="/groups/:groupId/settings"
         element={
-          <RequireIdentity>
+          <RequireProfile>
             <GroupSettingsPage />
-          </RequireIdentity>
+          </RequireProfile>
         }
       />
       <Route
         path="/groups/:groupId/docs/:docId"
         element={
-          <RequireIdentity>
+          <RequireProfile>
             <DocEditorPage />
-          </RequireIdentity>
+          </RequireProfile>
         }
       />
       <Route path="*" element={<Navigate to="/" replace />} />

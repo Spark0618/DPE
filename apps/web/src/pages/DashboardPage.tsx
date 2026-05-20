@@ -25,6 +25,11 @@ export default function DashboardPage() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    if (!identity) return;
+    void api.syncDisplayName(identity.nodeId, identity.displayName).catch(() => {});
+  }, [identity?.nodeId, identity?.displayName]);
+
   async function createGroup() {
     if (!identity || !newGroupName.trim()) return;
     setBusy(true);
@@ -37,6 +42,7 @@ export default function DashboardPage() {
         description: newGroupDesc.trim(),
         owner_node_id: identity.nodeId,
         owner_public_key: exportPublicKeyBase64Url(pk),
+        owner_display_name: identity.displayName,
         control_mode: "proxy",
       });
       saveGroupAdminKey(created.group_id, created.pk_admin);
@@ -63,7 +69,7 @@ export default function DashboardPage() {
       <header className="app-page-header">
         <div>
           <h1>总览</h1>
-          <p className="app-muted">我的群组与协作空间</p>
+          <p className="app-muted">你好，{identity.displayName} · 我的群组与协作空间</p>
         </div>
         <Link to="/connections" className="app-btn">连接与邀请</Link>
       </header>
