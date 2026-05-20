@@ -9,19 +9,35 @@ export type LanPeer = {
   lastSeen: number;
 };
 
-export async function fetchNetwork() {
-  return fetch(`${LAN}/network`).then((r) => r.json());
+async function lanFetch(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${LAN}${path}`, init);
+  } catch {
+    throw new Error(
+      `无法连接 lan-agent (${LAN})。请在本机运行: pnpm dev 或 pnpm --filter @dpe/lan-agent dev`,
+    );
+  }
+}
+
+export async function fetchNetwork(): Promise<Record<string, unknown>> {
+  const res = await lanFetch("/network");
+  if (!res.ok) throw new Error(`lan-agent /network 返回 ${res.status}`);
+  return res.json();
 }
 
 export async function fetchDiscovery(): Promise<{ peers: LanPeer[] }> {
-  const res = await fetch(`${LAN}/discovery`);
-  if (!res.ok) throw new Error(`lan-agent ${res.status}`);
+  const res = await lanFetch("/discovery");
+  if (!res.ok) throw new Error(`lan-agent /discovery 返回 ${res.status}`);
   return res.json();
 }
 
 export async function searchPeers(uidPrefix: string): Promise<{ peers: LanPeer[] }> {
   const q = uidPrefix.trim();
-  const res = await fetch(`${LAN}/peers?uid=${encodeURIComponent(q)}`);
-  if (!res.ok) throw new Error(`lan-agent ${res.status}`);
+  const res = await lanFetch(`/peers?uid=${encodeURIComponent(q)}`);
+  if (!res.ok) throw new Error(`lan-agent /peers 返回 ${res.status}`);
   return res.json();
+}
+
+export function getLanAgentBaseUrl(): string {
+  return LAN;
 }

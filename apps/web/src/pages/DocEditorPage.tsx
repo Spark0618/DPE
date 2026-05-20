@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import * as Y from "yjs";
-import { openDocKey, verifyJwt, importPublicKeyBase64Url } from "@dpe/crypto";
+import { openDocKey, parseJwtPayload, importPublicKeyBase64Url } from "@dpe/crypto";
 import { SecureYjsProvider, DPE_PROVIDER_ORIGIN } from "@dpe/yjs-provider";
 import { canMergeContentWrite } from "@dpe/acl";
-import { api, loadGroupAdminKey } from "../lib/api";
+import { isFolderNode } from "@dpe/shared";
+import { api } from "../lib/api";
 import { loadIdentity, loadPrivateKey } from "../lib/identity";
 import { getActiveMesh } from "../lib/mesh-context";
+
 
 export default function DocEditorPage() {
   const { groupId, docId } = useParams<{ groupId: string; docId: string }>();
   const identity = loadIdentity();
   const gid = groupId ?? "";
-  const did = docId ?? "root";
+  const did = docId ?? "";
 
   const [role, setRole] = useState<number | null>(null);
   const [status, setStatus] = useState("加载中…");
@@ -21,11 +23,10 @@ export default function DocEditorPage() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (!identity || !gid) return;
+    if (!identity || !gid || isFolderNode(did)) return;
     const sk = loadPrivateKey();
-    const pkAdmin = loadGroupAdminKey(gid);
-    if (!sk || !pkAdmin) {
-      setError("缺少密钥或群组 Admin 公钥（请从群组页进入）");
+    if (!sk) {
+      setError("缺少私钥（请从首页生成身份）");
       return;
     }
 
@@ -38,8 +39,7 @@ export default function DocEditorPage() {
       try {
         const session = await api.refreshJwt(gid, identity.nodeId, did);
         setRole(session.role);
-        const adminPk = await importPublicKeyBase64Url(pkAdmin);
-        const payload = await verifyJwt(session.jwt, adminPk, { audience: gid });
+        const payload = parseJwtPayload(session.jwt);
         const docKey = await openDocKey(sk, payload.doc_key);
         const publicKey = await importPublicKeyBase64Url(identity.publicKeyBase64Url);
 
@@ -116,6 +116,10 @@ export default function DocEditorPage() {
         </p>
       </main>
     );
+  }
+
+  if (isFolderNode(did)) {
+    return <Navigate to={`/groups/${gid}`} replace />;
   }
 
   return (

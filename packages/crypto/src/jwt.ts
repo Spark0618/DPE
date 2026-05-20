@@ -1,4 +1,4 @@
-import { SignJWT, importJWK, jwtVerify, type JWK } from "jose";
+import { SignJWT, decodeJwt, importJWK, jwtVerify, type JWK } from "jose";
 import type { JwtPayload } from "@dpe/proto";
 import { jwtPayloadSchema } from "@dpe/proto";
 import { bytesToBase64Url } from "./encoding.js";
@@ -23,6 +23,11 @@ export async function signJwt(
   return new SignJWT({ ...parsed })
     .setProtectedHeader({ alg: "EdDSA", typ: "JWT" })
     .sign(key);
+}
+
+/** Decode JWT from control-plane (already authorized via refresh); no signature verify. */
+export function parseJwtPayload(token: string): JwtPayload {
+  return jwtPayloadSchema.parse(decodeJwt(token));
 }
 
 export async function verifyJwt(

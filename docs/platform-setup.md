@@ -23,3 +23,12 @@
 pnpm install
 pnpm dev
 ```
+
+## Acceptance (P6)
+
+```bash
+pnpm verify:p6           # unit + lint + security audit (no DB)
+pnpm verify:p6 --live    # + Postgres E2E API + signaling + lan-agent
+```
+
+双机 LAN 验收见 [acceptance-dual-host.md](./acceptance-dual-host.md)。

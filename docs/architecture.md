@@ -5,7 +5,7 @@ See [design.md](./design.md) for the cryptographic and P2P design.
 ## Components
 
 - **apps/web** — React UI (dashboard + group panel)
-- **apps/control-plane** — NestJS IdP (JWT, ACL, RPC)
+- **apps/control-plane** — NestJS IdP (JWT, per-doc ACL, RBAC metadata, RPC)
 - **apps/signaling** — WebRTC signaling
 - **apps/lan-agent** — mDNS / LAN discovery bridge (Windows + Linux)
 - **packages/** — crypto, proto, acl, yjs-provider

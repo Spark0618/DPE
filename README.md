@@ -24,12 +24,18 @@ pnpm dev
 - [P1 Cryptography](./docs/P1.md)
 - [Architecture](./docs/architecture.md)
 - [Platform setup](./docs/platform-setup.md)
+- [P6 E2E & CI](./docs/P6.md)
 
-## P1 verification
+## Verification
 
-```bash
-pnpm verify:p1
-```
+| Phase | Command |
+|-------|---------|
+| P1 | `pnpm verify:p1` |
+| P2 | `pnpm verify:p2` / `pnpm verify:p2 --api` |
+| P3–P5 | `pnpm verify:p3` … `pnpm verify:p5` |
+| **P6 (full)** | `pnpm verify:p6` / `pnpm verify:p6 --live` |
+
+Docs: [P6 — E2E & acceptance](./docs/P6.md) · [Dual-host checklist](./docs/acceptance-dual-host.md)
 
 ## License
 

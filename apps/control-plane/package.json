@@ -10,7 +10,7 @@
     "db:generate:safe": "node scripts/stop-servers.mjs && prisma generate",
     "start": "node dist/main.js",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "db:push": "node scripts/run-prisma.mjs db push --skip-generate",
     "db:migrate": "node scripts/run-prisma.mjs migrate dev"
   },

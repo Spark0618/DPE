@@ -7,15 +7,32 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  verify-p6:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            live: true
+          - os: windows-latest
+            live: false
     runs-on: ${{ matrix.os }}
     env:
-      # Prisma generate during control-plane build does not need a live DB.
       DATABASE_URL: postgresql://dpe:dpe@localhost:5432/dpe
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dpe
+          POSTGRES_PASSWORD: dpe
+          POSTGRES_DB: dpe
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dpe -d dpe"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,9 +49,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
+      - name: P6 verification (live E2E)
+        if: matrix.live
+        run: pnpm verify:p6 --live
 
-      - name: P1 unit tests
-        if: matrix.os == 'ubuntu-latest'
-        run: pnpm test:p1
+      - name: P6 verification (offline)
+        if: "!matrix.live"
+        run: pnpm verify:p6

@@ -5,14 +5,12 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { assertMonotonicAcl } from "@dpe/acl";
 import { base64UrlToBytes, bytesToBase64Url, generateDocKey } from "@dpe/crypto";
 import { operableRpcSchema } from "@dpe/proto";
 import { PrismaService } from "../prisma/prisma.service.js";
 import { SigningService } from "../crypto/signing.service.js";
+import { ROOT_DOC_ID } from "@dpe/shared";
 import type { CreateGroupDto, CreateInvitationDto, JoinGroupDto, RefreshJwtDto } from "./groups.dto.js";
-
-const ROOT_DOC_ID = "root";
 
 @Injectable()
 export class GroupsService {
@@ -60,7 +58,7 @@ export class GroupsService {
           docId: ROOT_DOC_ID,
           groupId: g.id,
           parentDocId: null,
-          title: "Root",
+          title: "根目录",
         },
       });
       await tx.documentKey.create({
@@ -283,7 +281,15 @@ export class GroupsService {
       where: { groupId, docId: { in: [...visible] } },
       orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
     });
-    return { nodes };
+    return {
+      nodes: nodes.map((n) => ({
+        docId: n.docId,
+        parentDocId: n.parentDocId,
+        title: n.title,
+        keyVersion: n.keyVersion,
+        isFolder: n.docId === ROOT_DOC_ID,
+      })),
+    };
   }
 
   async operableRpc(groupId: string, callerNodeId: string, body: unknown) {
@@ -295,28 +301,6 @@ export class GroupsService {
         where: { groupId_docId: { groupId, docId: rpc.doc_id } },
       });
       if (!parent) throw new NotFoundException("doc not found");
-      if (parent.parentDocId) {
-        const existing = await this.prisma.aclGrant.findMany({
-          where: { groupId, nodeId: rpc.user_node_id },
-        });
-        const next = existing.filter((g) => g.docId !== rpc.doc_id);
-        next.push({
-          groupId,
-          docId: rpc.doc_id,
-          nodeId: rpc.user_node_id,
-          role: rpc.role,
-          updatedAt: new Date(),
-        });
-        try {
-          assertMonotonicAcl(
-            next.map((g) => ({ nodeId: g.nodeId, docId: g.docId, role: g.role as 0 | 1 | 2 | 3 })),
-            parent.parentDocId,
-            rpc.doc_id,
-          );
-        } catch (e) {
-          throw new BadRequestException(String(e));
-        }
-      }
       await this.prisma.aclGrant.upsert({
         where: {
           groupId_docId_nodeId: {
@@ -337,6 +321,9 @@ export class GroupsService {
     }
 
     if (rpc.op === "CreateChild") {
+      if (rpc.doc_id === ROOT_DOC_ID) {
+        throw new BadRequestException("doc_id cannot be root");
+      }
       await this.requireOperable(groupId, callerNodeId, rpc.parent_doc_id);
       const newKey = generateDocKey();
       await this.prisma.docNode.create({

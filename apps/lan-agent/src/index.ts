@@ -2,6 +2,7 @@ import os from "node:os";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { createDiscovery, type LanPeer } from "./discovery.js";
+import { registerCors } from "./cors.js";
 
 function pickLanAddress(): string {
   for (const ifaces of Object.values(os.networkInterfaces())) {
@@ -44,6 +45,7 @@ async function main() {
   });
 
   const app = Fastify({ logger: false });
+  await registerCors(app);
   await app.register(websocket);
 
   app.get("/", async () => ({

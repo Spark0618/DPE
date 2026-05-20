@@ -1,8 +1,47 @@
-﻿import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ROOT_DOC_ID, isFolderNode } from "@dpe/shared";
 import { api, loadGroupAdminKey, type DocNodeRow } from "../lib/api";
 import { loadIdentity } from "../lib/identity";
 import { startGroupMesh, stopGroupMesh } from "../lib/mesh-context";
+
+function isFolder(n: DocNodeRow) {
+  return n.isFolder ?? isFolderNode(n.docId);
+}
+
+function childrenOf(nodes: DocNodeRow[], parentId: string | null) {
+  return nodes.filter((n) => n.parentDocId === parentId);
+}
+
+function DocTree({
+  nodes,
+  parentId,
+  gid,
+  depth = 0,
+}: {
+  nodes: DocNodeRow[];
+  parentId: string | null;
+  gid: string;
+  depth?: number;
+}) {
+  const children = childrenOf(nodes, parentId);
+  if (children.length === 0) return null;
+  return (
+    <ul style={{ listStyle: "none", paddingLeft: depth ? 16 : 0, margin: "4px 0" }}>
+      {children.map((n) => (
+        <li key={n.docId}>
+          {isFolder(n) ? (
+            <span>📁 {n.title}</span>
+          ) : (
+            <Link to={`/groups/${gid}/docs/${n.docId}`}>{n.title}</Link>
+          )}{" "}
+          <small>({n.docId})</small>
+          <DocTree nodes={nodes} parentId={n.docId} gid={gid} depth={depth + 1} />
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
@@ -16,6 +55,7 @@ export default function GroupPage() {
   const [p2pStatus, setP2pStatus] = useState("未连接");
   const [error, setError] = useState<string | null>(null);
   const [meshGen, setMeshGen] = useState(0);
+  const [newDocTitle, setNewDocTitle] = useState("");
 
   const connectMesh = useCallback(
     async (signal: AbortSignal) => {
@@ -78,12 +118,30 @@ export default function GroupPage() {
     setMeshGen((n) => n + 1);
   }
 
+  async function createDoc() {
+    if (!identity) return;
+    const doc_id = crypto.randomUUID();
+    try {
+      await api.createChild(gid, identity.nodeId, {
+        parent_doc_id: ROOT_DOC_ID,
+        doc_id,
+        title: newDocTitle.trim() || "未命名文档",
+      });
+      const tree = await api.getTree(gid, identity.nodeId);
+      setNodes(tree.nodes);
+      setNewDocTitle("");
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "创建文档失败");
+    }
+  }
+
   async function setAcl() {
     if (!identity || !aclUid.trim()) return;
     try {
       await api.setAcl(gid, identity.nodeId, {
         op: "SetACL",
-        doc_id: "root",
+        doc_id: ROOT_DOC_ID,
         user_node_id: aclUid.trim(),
         role: aclRole,
       });
@@ -126,15 +184,19 @@ export default function GroupPage() {
 
       <div className="card">
         <h2>文档树</h2>
-        <ul>
-          {nodes.map((n) => (
-            <li key={n.docId}>
-              <Link to={`/groups/${gid}/docs/${n.docId}`}>{n.title}</Link>{" "}
-              <small>({n.docId})</small>
-            </li>
-          ))}
-        </ul>
+        <DocTree nodes={nodes} parentId={null} gid={gid} />
         {nodes.length === 0 && <p>无可见文档</p>}
+        <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            value={newDocTitle}
+            onChange={(e) => setNewDocTitle(e.target.value)}
+            placeholder="新文档标题"
+            style={{ padding: 8, flex: "1 1 200px" }}
+          />
+          <button type="button" onClick={() => void createDoc()}>
+            在根目录下新建文档
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -149,7 +211,7 @@ export default function GroupPage() {
       </div>
 
       <div className="card">
-        <h2>设置 ACL（Root）</h2>
+        <h2>设置 ACL（根目录）</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400 }}>
           <input
             value={aclUid}
@@ -177,4 +239,3 @@ export default function GroupPage() {
     </main>
   );
 }
-

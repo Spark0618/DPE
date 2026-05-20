@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { exportPublicKeyBase64Url, importPublicKeyBase64Url } from "@dpe/crypto";
 import { api, saveGroupAdminKey, type GroupSummary, type InvitationRow } from "../lib/api";
-import { fetchDiscovery, fetchNetwork, searchPeers, type LanPeer } from "../lib/lan";
+import { fetchDiscovery, fetchNetwork, getLanAgentBaseUrl, searchPeers, type LanPeer } from "../lib/lan";
 import { loadIdentity, loadPrivateKey } from "../lib/identity";
 
 export default function DashboardPage() {
   const identity = loadIdentity();
   const [network, setNetwork] = useState<Record<string, unknown> | null>(null);
+  const [lanError, setLanError] = useState<string | null>(null);
   const [peers, setPeers] = useState<LanPeer[]>([]);
   const [uidQuery, setUidQuery] = useState("");
   const [owned, setOwned] = useState<GroupSummary[]>([]);
@@ -23,8 +24,9 @@ export default function DashboardPage() {
     if (!identity) return;
     setError(null);
     try {
+      setLanError(null);
       const [net, disc, o, j, inv] = await Promise.all([
-        fetchNetwork().catch(() => null),
+        fetchNetwork().catch((e) => { setLanError(e instanceof Error ? e.message : "lan-agent 不可用"); return null; }),
         fetchDiscovery().catch(() => ({ peers: [] })),
         api.listGroups(identity.nodeId, "owner"),
         api.listGroups(identity.nodeId, "member"),
@@ -148,7 +150,7 @@ export default function DashboardPage() {
         {network ? (
           <pre style={{ fontSize: 12, overflow: "auto" }}>{JSON.stringify(network, null, 2)}</pre>
         ) : (
-          <p>无法连接 lan-agent（请运行 <code>pnpm dev</code>）</p>
+          <p>{lanError ?? "无法连接 lan-agent"}<br /><small>地址: <code>{getLanAgentBaseUrl()}</code> · <a href={`${getLanAgentBaseUrl()}/health`} target="_blank" rel="noreferrer">/health</a></small></p>
         )}
       </div>
 

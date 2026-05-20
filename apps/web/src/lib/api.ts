@@ -44,6 +44,7 @@ export type DocNodeRow = {
   parentDocId: string | null;
   title: string;
   keyVersion: number;
+  isFolder?: boolean;
 };
 
 export type InvitationRow = {
@@ -135,6 +136,20 @@ export const api = {
     return request<{ ok: boolean }>(
       `/groups/${groupId}/rpc?caller_node_id=${encodeURIComponent(callerNodeId)}`,
       { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+
+  createChild(
+    groupId: string,
+    callerNodeId: string,
+    body: { parent_doc_id: string; doc_id: string; title?: string },
+  ) {
+    return request<{ ok: boolean; doc_id: string }>(
+      `/groups/${groupId}/rpc?caller_node_id=${encodeURIComponent(callerNodeId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ op: "CreateChild", ...body }),
+      },
     );
   },
 };
