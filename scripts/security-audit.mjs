@@ -51,6 +51,11 @@ mustMatch(
   /parseJwtPayload/,
   "inline editor parses JWT after control-plane refresh",
 );
+mustMatch(
+  "apps/web/src/components/DocInlineEditor.tsx",
+  /openDocKeyForEd25519/,
+  "inline editor unseals doc_key with Ed25519 private key",
+);
 mustNotMatch(
   "apps/web/src/components/DocInlineEditor.tsx",
   /verifyJwt\s*\(/,

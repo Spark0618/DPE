@@ -123,25 +123,6 @@ export class GroupsController {
     return this.groups.putDocSnapshot(id, docId, body.node_id, body.state_update_base64);
   }
 
-
-  @Get("groups/:id/docs/:docId/snapshot")
-  getDocSnapshot(
-    @Param("id") id: string,
-    @Param("docId") docId: string,
-    @Query("node_id") nodeId: string,
-  ) {
-    return this.groups.getDocSnapshot(id, docId, nodeId);
-  }
-
-  @Post("groups/:id/docs/:docId/snapshot")
-  putDocSnapshot(
-    @Param("id") id: string,
-    @Param("docId") docId: string,
-    @Body() body: PutDocSnapshotDto,
-  ) {
-    return this.groups.putDocSnapshot(id, docId, body.node_id, body.state_update_base64);
-  }
-
   @Post("groups/:id/jwt/refresh")
   refreshJwt(@Param("id") id: string, @Body() body: RefreshJwtDto) {
     return this.groups.refreshJwt(id, body);
