@@ -27,6 +27,9 @@ export function saveDisplayName(name: string): void {
     throw new Error("用户名须为 1–32 个字符");
   }
   localStorage.setItem(DISPLAY_NAME_KEY, trimmed);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("dpe-display-name-changed"));
+  }
 }
 
 export function hasUserProfile(): boolean {

@@ -124,14 +124,48 @@ code {
   background: var(--bz-selection);
 }
 
+.app-shell__user-menu {
+  position: relative;
+}
+
 .app-shell__user {
   font-size: var(--bz-font-size);
   font-weight: 500;
   color: var(--bz-muted);
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.65rem;
   border-radius: var(--bz-radius);
   background: var(--bz-bg);
   border: 1px solid var(--bz-border-light);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.app-shell__user:hover {
+  color: var(--bz-text);
+  border-color: var(--bz-border);
+}
+
+.app-shell__user-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  width: min(280px, 90vw);
+  padding: 0.75rem;
+  background: var(--bz-surface);
+  border: 1px solid var(--bz-border);
+  border-radius: var(--bz-radius);
+  box-shadow: var(--bz-shadow);
+}
+
+.app-shell__user-panel__hint {
+  margin: 0 0 0.5rem;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.app-shell__user-panel__hint code {
+  font-size: 11px;
 }
 
 .app-shell__body {

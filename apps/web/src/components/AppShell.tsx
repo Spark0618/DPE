@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { loadIdentity } from "../lib/identity";
+import { UserDisplayNameButton } from "./UserDisplayNameButton";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const identity = loadIdentity();
   const { pathname } = useLocation();
 
   const navClass = (prefix: string) =>
@@ -25,11 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           </nav>
         </div>
-        {identity && (
-          <span className="app-shell__user" title="当前用户">
-            {identity.displayName}
-          </span>
-        )}
+        <UserDisplayNameButton />
       </header>
       <div className="app-shell__body">{children}</div>
     </div>

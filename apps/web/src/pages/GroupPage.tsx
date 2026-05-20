@@ -5,7 +5,7 @@ import { DocTreeNav, ROOT_DOC_ID } from "../components/DocTreeNav";
 import { DocInlineEditor } from "../components/DocInlineEditor";
 import { DocNodePermissionsPanel } from "../components/DocNodePermissionsPanel";
 import { api, loadGroupAdminKey, type DocNodeRow } from "../lib/api";
-import { loadIdentity } from "../lib/identity";
+import { useIdentity } from "../lib/use-identity";
 import { startGroupMesh, stopGroupMesh } from "../lib/mesh-context";
 
 function isFolder(n: DocNodeRow) {
@@ -15,7 +15,7 @@ function isFolder(n: DocNodeRow) {
 export default function GroupPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const identity = loadIdentity();
+  const identity = useIdentity();
   const nodeId = identity?.nodeId ?? "";
   const myName = identity?.displayName ?? "";
   const gid = groupId ?? "";
