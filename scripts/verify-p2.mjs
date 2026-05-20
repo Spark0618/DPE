@@ -91,7 +91,7 @@ async function main() {
   run("node", ["scripts/verify-p1.mjs"], "P1 baseline");
 
   run("pnpm", ["install"], "pnpm install");
-  run("pnpm", ["--filter", "@dpe/control-plane", "exec", "prisma", "generate"], "prisma generate", cpDir);
+  // build runs prisma generate once; avoid a second generate (Windows EPERM on query_engine DLL)
   run("pnpm", ["--filter", "@dpe/control-plane", "build"], "control-plane build");
 
   if (!process.argv.includes("--api")) {

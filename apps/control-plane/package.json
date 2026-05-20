@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "build": "prisma generate && tsc",
-    "dev": "prisma generate && tsx watch src/main.ts",
+    "dev": "tsx watch src/main.ts",
+    "db:generate": "prisma generate",
     "start": "node dist/main.js",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "db:push": "node scripts/run-prisma.mjs db push",
+    "db:push": "node scripts/run-prisma.mjs db push --skip-generate",
     "db:migrate": "node scripts/run-prisma.mjs migrate dev"
   },
   "dependencies": {
