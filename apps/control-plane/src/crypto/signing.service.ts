@@ -9,10 +9,13 @@ import {
 } from "@dpe/crypto";
 import type { JwtPayload } from "@dpe/proto";
 
+const DEFAULT_JWT_TTL_SEC = 300; // 5 minutes
+
 @Injectable()
 export class SigningService implements OnModuleInit {
   private privateKey!: Uint8Array;
   private publicKey!: Uint8Array;
+  private jwtTtlSec = DEFAULT_JWT_TTL_SEC;
   nodeId!: string;
 
   async onModuleInit() {
@@ -31,6 +34,13 @@ export class SigningService implements OnModuleInit {
       );
     }
     this.nodeId = deriveNodeId(this.publicKey);
+    const ttlEnv = process.env.DPE_JWT_TTL_SEC;
+    if (ttlEnv != null && ttlEnv !== "") {
+      const parsed = Number(ttlEnv);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        this.jwtTtlSec = Math.floor(parsed);
+      }
+    }
   }
 
   getIssuerPublicKeyBase64Url(): string {
@@ -64,7 +74,7 @@ export class SigningService implements OnModuleInit {
     payload: Omit<JwtPayload, "iat" | "exp" | "jti"> & { ttlSec?: number },
   ): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
-    const ttl = payload.ttlSec ?? 3600;
+    const ttl = payload.ttlSec ?? this.jwtTtlSec;
     const full: JwtPayload = {
       iss: payload.iss,
       sub: payload.sub,

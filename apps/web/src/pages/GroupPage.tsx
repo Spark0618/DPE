@@ -247,8 +247,6 @@ export default function GroupPage() {
 
       <div className="app-group-layout">
         <aside className="app-group-sidebar">
-          <h2>文档</h2>
-          <p className="app-muted app-group-sidebar__hint">根目录与文档在同一页查看与编辑</p>
           <DocTreeNav nodes={nodes} groupId={gid} activeId={selectedId} onSelectNode={selectNode} />
           <div className="app-group-sidebar__create">
             <span className="app-muted">
