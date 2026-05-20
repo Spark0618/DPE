@@ -265,19 +265,25 @@ importers:
 
   packages/yjs-provider:
     dependencies:
-      yjs:
-        specifier: ^13.6.20
-        version: 13.6.30
-    devDependencies:
       '@dpe/acl':
         specifier: workspace:*
         version: link:../acl
       '@dpe/crypto':
         specifier: workspace:*
         version: link:../crypto
+      '@dpe/p2p':
+        specifier: workspace:*
+        version: link:../p2p
       '@dpe/proto':
         specifier: workspace:*
         version: link:../proto
+      yjs:
+        specifier: ^13.6.20
+        version: 13.6.30
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
+    devDependencies:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.19

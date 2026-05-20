@@ -19,14 +19,16 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "yjs": "^13.6.20"
+    "@dpe/acl": "workspace:*",
+    "@dpe/crypto": "workspace:*",
+    "@dpe/p2p": "workspace:*",
+    "@dpe/proto": "workspace:*",
+    "yjs": "^13.6.20",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8",
-    "@dpe/proto": "workspace:*",
-    "@dpe/crypto": "workspace:*",
-    "@dpe/acl": "workspace:*"
+    "vitest": "^2.1.8"
   }
 }

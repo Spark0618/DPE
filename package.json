@@ -16,7 +16,9 @@
     "verify:p1": "node scripts/verify-p1.mjs",
     "verify:p2": "node scripts/verify-p2.mjs",
     "verify:p3": "node scripts/verify-p3.mjs",
-    "test:p3": "pnpm --filter @dpe/p2p test"
+    "verify:p4": "node scripts/verify-p4.mjs",
+    "test:p3": "pnpm --filter @dpe/p2p test",
+    "test:p4": "pnpm --filter @dpe/yjs-provider test"
   },
   "devDependencies": {
     "dotenv": "^16.4.7",
