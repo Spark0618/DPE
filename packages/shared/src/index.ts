@@ -14,3 +14,5 @@ export function isFolderDoc(node: { docId: string; isFolder?: boolean }): boolea
 export function isFolderNode(docId: string): boolean {
   return docId === ROOT_DOC_ID;
 }
+
+export { randomUuid } from "./random-uuid.js";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { isFolderDoc } from "@dpe/shared";
+import { isFolderDoc, randomUuid } from "@dpe/shared";
 import { DocTreeNav, ROOT_DOC_ID } from "../components/DocTreeNav";
 import { DocInlineEditor } from "../components/DocInlineEditor";
 import { DocNodePermissionsPanel } from "../components/DocNodePermissionsPanel";
@@ -183,7 +183,7 @@ export default function GroupPage() {
       : (selectedNode?.parentDocId ?? ROOT_DOC_ID);
     const parent = nodes.find((n) => n.docId === parentId);
     if (!parent || !isFolder(parent)) return;
-    const doc_id = crypto.randomUUID();
+    const doc_id = randomUuid();
     try {
       await api.createChild(gid, nodeId, {
         parent_doc_id: parentId,
