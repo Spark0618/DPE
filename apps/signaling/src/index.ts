@@ -1,3 +1,4 @@
+import "./load-env.js";
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
 import { SignalingRooms } from "./rooms.js";
