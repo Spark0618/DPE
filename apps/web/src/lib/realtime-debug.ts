@@ -3,6 +3,9 @@ export type RealtimeDebugSnapshot = {
   txBytes: number;
   rxCount: number;
   rxBytes: number;
+  peersInRoom: number;
+  channelsOpen: number;
+  authedPeers: number;
   lastRejectReason: string | null;
   lastAuthError: string | null;
   updatedAt: number;
@@ -16,6 +19,9 @@ const EMPTY: RealtimeDebugSnapshot = {
   txBytes: 0,
   rxCount: 0,
   rxBytes: 0,
+  peersInRoom: 0,
+  channelsOpen: 0,
+  authedPeers: 0,
   lastRejectReason: null,
   lastAuthError: null,
   updatedAt: Date.now(),
@@ -62,6 +68,18 @@ export function markRealtimeAuthError(reason: string): void {
   });
 }
 
+export function markRealtimePeerStats(stats: {
+  peersInRoom?: number;
+  channelsOpen?: number;
+  authedPeers?: number;
+}): void {
+  update((s) => {
+    if (typeof stats.peersInRoom === "number") s.peersInRoom = Math.max(0, stats.peersInRoom);
+    if (typeof stats.channelsOpen === "number") s.channelsOpen = Math.max(0, stats.channelsOpen);
+    if (typeof stats.authedPeers === "number") s.authedPeers = Math.max(0, stats.authedPeers);
+  });
+}
+
 export function getRealtimeDebugSnapshot(): RealtimeDebugSnapshot {
   return { ...getStore() };
 }
@@ -72,6 +90,9 @@ export function resetRealtimeDebugSnapshot(): void {
     s.txBytes = 0;
     s.rxCount = 0;
     s.rxBytes = 0;
+    s.peersInRoom = 0;
+    s.channelsOpen = 0;
+    s.authedPeers = 0;
     s.lastRejectReason = null;
     s.lastAuthError = null;
   });

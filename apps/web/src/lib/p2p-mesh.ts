@@ -7,7 +7,12 @@ import type { AuthEnvelope } from "@dpe/proto";
 import { authEnvelopeSchema } from "@dpe/proto";
 import { SecureYjsProvider, type PeerSession } from "@dpe/yjs-provider";
 import { base64UrlToBytes } from "@dpe/crypto";
-import { markRealtimeAuthError, markRealtimeRx, markRealtimeTx } from "./realtime-debug";
+import {
+  markRealtimeAuthError,
+  markRealtimePeerStats,
+  markRealtimeRx,
+  markRealtimeTx,
+} from "./realtime-debug";
 
 function signalingUrl(): string {
   const raw = import.meta.env.VITE_SIGNALING_URL ?? "ws://localhost:3002/ws";
@@ -29,8 +34,21 @@ export class GroupP2pMesh {
   private readonly channels = new Map<string, RTCDataChannel>();
   private readonly providers = new Set<SecureYjsProvider>();
   private readonly authenticated = new Map<string, AuthenticatedPeer>();
+  private readonly reconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(private readonly config: MeshConfig) {}
+
+  private emitPeerStats(peersInRoom = 0): void {
+    let channelsOpen = 0;
+    for (const ch of this.channels.values()) {
+      if (ch.readyState === "open") channelsOpen += 1;
+    }
+    markRealtimePeerStats({
+      peersInRoom: Math.max(0, peersInRoom),
+      channelsOpen,
+      authedPeers: this.authenticated.size,
+    });
+  }
 
   attachProvider(provider: SecureYjsProvider): void {
     this.providers.add(provider);
@@ -109,11 +127,35 @@ export class GroupP2pMesh {
 
   stop(): void {
     this.ws?.close();
+    for (const t of this.reconnectTimers.values()) clearTimeout(t);
+    this.reconnectTimers.clear();
     for (const pc of this.pcs.values()) pc.close();
     this.pcs.clear();
     this.channels.clear();
     this.authenticated.clear();
     this.providers.clear();
+    this.emitPeerStats(0);
+  }
+
+  private cleanupPeer(peerId: string): void {
+    const timer = this.reconnectTimers.get(peerId);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(peerId);
+    }
+    const pc = this.pcs.get(peerId);
+    if (pc) {
+      try {
+        pc.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    this.pcs.delete(peerId);
+    this.channels.delete(peerId);
+    this.authenticated.delete(peerId);
+    for (const p of this.providers) p.unregisterPeer(peerId);
+    this.emitPeerStats();
   }
 
   private toPeerSession(auth: AuthenticatedPeer): PeerSession {
@@ -135,6 +177,7 @@ export class GroupP2pMesh {
     try {
       const session = this.toPeerSession(peer);
       for (const p of this.providers) p.registerPeer(session);
+      this.emitPeerStats();
     } catch {
       /* retry when members loaded */
     }
@@ -148,6 +191,7 @@ export class GroupP2pMesh {
     };
 
     if (msg.type === "peers" && msg.peers) {
+      this.emitPeerStats(Math.max(0, msg.peers.length - 1));
       for (const peerId of msg.peers) {
         if (peerId === this.config.nodeId || this.pcs.has(peerId)) continue;
         void this.connectPeer(peerId, this.config.nodeId < peerId);
@@ -198,6 +242,41 @@ export class GroupP2pMesh {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
     this.pcs.set(peerId, pc);
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState;
+      if (st === "connected") {
+        const pending = this.reconnectTimers.get(peerId);
+        if (pending) {
+          clearTimeout(pending);
+          this.reconnectTimers.delete(peerId);
+        }
+        return;
+      }
+
+      if (st === "failed" || st === "closed") {
+        this.cleanupPeer(peerId);
+        // Signal servers may not always emit another peers list update; try one reconnect.
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          void this.connectPeer(peerId, this.config.nodeId < peerId);
+        }
+        return;
+      }
+
+      if (st === "disconnected") {
+        // "disconnected" can be transient on unstable LAN/VM links; don't tear down immediately.
+        if (this.reconnectTimers.has(peerId)) return;
+        const timer = setTimeout(() => {
+          this.reconnectTimers.delete(peerId);
+          const current = this.pcs.get(peerId);
+          if (!current || current.connectionState !== "disconnected") return;
+          this.cleanupPeer(peerId);
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            void this.connectPeer(peerId, this.config.nodeId < peerId);
+          }
+        }, 4000);
+        this.reconnectTimers.set(peerId, timer);
+      }
+    };
 
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
@@ -246,11 +325,12 @@ export class GroupP2pMesh {
     };
 
     channel.onopen = () => {
+      this.emitPeerStats();
       void sendAuth().catch(() => {
         /* ignore auth race errors */
       });
     };
-    channel.onclose = () => this.channels.delete(peerId);
+    channel.onclose = () => this.cleanupPeer(peerId);
 
     channel.onmessage = (ev) => {
       void this.onChannelMessage(peerId, channel, String(ev.data), () => sendAuth()).catch(() => {

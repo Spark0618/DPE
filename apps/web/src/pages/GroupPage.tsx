@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { isFolderDoc, randomUuid } from "@dpe/shared";
 import { DocTreeNav, ROOT_DOC_ID } from "../components/DocTreeNav";
 import { DocInlineEditor } from "../components/DocInlineEditor";
 import { DocNodePermissionsPanel } from "../components/DocNodePermissionsPanel";
-import { api, loadGroupAdminKey, type DocNodeRow } from "../lib/api";
+import { ApiError, api, loadGroupAdminKey, type DocNodeRow } from "../lib/api";
 import { useIdentity } from "../lib/use-identity";
 import { startGroupMesh, stopGroupMesh } from "../lib/mesh-context";
 import {
@@ -16,6 +16,22 @@ import {
 
 function isFolder(n: DocNodeRow) {
   return isFolderDoc(n);
+}
+
+function explainGroupError(error: unknown, nodeId: string, groupId: string): string {
+  if (error instanceof ApiError) {
+    const msg = error.message.toLowerCase();
+    if (error.status === 403 && msg.includes("not a member")) {
+      return `当前身份不在该群组内（node_id=${nodeId}）。请在此身份下重新接受邀请后再进入群组 ${groupId}。`;
+    }
+    if (error.status === 404 && msg.includes("group")) {
+      return `群组不存在或已被解散（group_id=${groupId}）。请返回总览页确认群组列表。`;
+    }
+    if (error.status === 401) {
+      return `当前会话认证失效（node_id=${nodeId}）。请重新进入群组并刷新凭证。`;
+    }
+  }
+  return error instanceof Error ? error.message : "操作失败";
 }
 
 export default function GroupPage() {
@@ -36,7 +52,6 @@ export default function GroupPage() {
   const [newItemTitle, setNewItemTitle] = useState("");
   const [renameTitle, setRenameTitle] = useState("");
   const [selectedId, setSelectedId] = useState(ROOT_DOC_ID);
-  const meshBusyRef = useRef(false);
 
   const selectedNode = nodes.find((n) => n.docId === selectedId);
   const selectedIsFolder = selectedNode ? isFolder(selectedNode) : true;
@@ -79,7 +94,7 @@ export default function GroupPage() {
         setNodes(tree.nodes);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "加载群组失败");
+          setError(explainGroupError(e, nodeId, gid));
         }
       }
     })();
@@ -94,7 +109,9 @@ export default function GroupPage() {
     const pkAdmin = loadGroupAdminKey(gid);
     if (!pkAdmin) {
       setP2pStatus("未连接");
-      setError("未缓存 pk_admin，请从建群/入群流程进入");
+      setError(
+        `缺少该群组的管理员公钥缓存（pk_admin）。当前 node_id=${nodeId}；请从建群/入群流程进入 group_id=${gid} 以写入本地缓存。`,
+      );
       return;
     }
 
@@ -102,8 +119,6 @@ export default function GroupPage() {
     const gen = meshGen;
 
     void (async () => {
-      if (meshBusyRef.current) return;
-      meshBusyRef.current = true;
       setP2pStatus("连接中…");
       setError(null);
 
@@ -130,16 +145,13 @@ export default function GroupPage() {
         setError(null);
       } catch (e) {
         if (ac.signal.aborted || gen !== meshGen) return;
-        setError(e instanceof Error ? e.message : "P2P 连接失败");
+        setError(explainGroupError(e, nodeId, gid));
         setP2pStatus("信令未连接");
-      } finally {
-        meshBusyRef.current = false;
       }
     })();
 
     return () => {
       ac.abort();
-      meshBusyRef.current = false;
       void stopGroupMesh();
     };
   }, [gid, nodeId, meshGen, syncDocId]);
@@ -259,6 +271,7 @@ export default function GroupPage() {
           </p>
           <p className="app-muted">
             Debug · tx {debug.txCount}/{debug.txBytes}B · rx {debug.rxCount}/{debug.rxBytes}B
+            {` · peers=${debug.peersInRoom} open=${debug.channelsOpen} authed=${debug.authedPeers}`}
             {debug.lastRejectReason ? ` · reject=${debug.lastRejectReason}` : ""}
             {debug.lastAuthError ? ` · authErr=${debug.lastAuthError}` : ""}
           </p>
