@@ -66,8 +66,15 @@ export function DocInlineEditor({
     };
 
     const observer = () => {
-      if (document.activeElement !== el) {
-        el.value = eng.ytext.toString();
+      const next = eng.ytext.toString();
+      if (el.value === next) return;
+      const focused = document.activeElement === el;
+      const start = el.selectionStart ?? 0;
+      const end = el.selectionEnd ?? start;
+      el.value = next;
+      if (focused) {
+        const max = next.length;
+        el.setSelectionRange(Math.min(start, max), Math.min(end, max));
       }
     };
 
